@@ -8,4 +8,7 @@ dependencies = [
     "paramiko",
     "ssh-audit",
     "pytest",
+    "pypdf>=6.14.2",
+    "google-genai",
+    "python-dotenv",
 ]

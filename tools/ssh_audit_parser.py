@@ -16,7 +16,19 @@ Design principles:
 import re
 import json
 from typing import Any
-from tools.ssh_profile_normalizer import normalize_profile
+from .ssh_profile_normalizer import normalize_profile
+
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[mGKHFJABCDsu]")
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove all ANSI/VT100 terminal escape sequences from a string."""
+    return _ANSI_RE.sub("", text)
+
+
+
+
 
 # ---------------------------------------------------------------------------
 # Weak-algorithm reference sets
@@ -117,16 +129,21 @@ def parse_sshd_config(raw_output: str) -> dict[str, Any]:
     if not raw_output or not raw_output.strip():
         return {}
 
+    raw_output = _strip_ansi(raw_output)
+
     # -- Authentication directives --
     auth_keys = [
         "permitrootlogin", "passwordauthentication", "pubkeyauthentication",
         "permitemptypasswords", "maxauthtries", "authenticationmethods",
+        "gssapiauthentication", "hostbasedauthentication", "ignorerhosts",
+        "usepam", "allowusers", "denyusers", "allowgroups", "denygroups",
     ]
     auth = _parse_kv_block(raw_output, auth_keys)
 
     # -- Session security directives --
     session_keys = [
         "clientaliveinterval", "clientalivecountmax", "maxsessions", "logingracetime",
+        "maxstartups",
     ]
     session = _parse_kv_block(raw_output, session_keys)
 
@@ -134,7 +151,7 @@ def parse_sshd_config(raw_output: str) -> dict[str, Any]:
     for k in ("clientaliveinterval", "clientalivecountmax", "maxsessions",
               "logingracetime", "maxauthtries"):
         for src in (auth, session):
-            if k in src and src[k].isdigit():
+            if k in src and isinstance(src[k], str) and src[k].isdigit():
                 src[k] = int(src[k])
 
     # -- Forwarding directives --
@@ -176,6 +193,10 @@ def parse_sshd_config(raw_output: str) -> dict[str, Any]:
     weak_macs    = _extract_weak("macs", WEAK_MACS)
     weak_kex     = _extract_weak("kexalgorithms", WEAK_KEX)
 
+    # Full ciphers list (for CIS 5.1.6 — rule needs to verify specific ciphers present)
+    _ciphers_m = re.search(r"^ciphers\s+(.+)$", raw_output, re.IGNORECASE | re.MULTILINE)
+    all_ciphers = [c.strip() for c in _ciphers_m.group(1).split(",")] if _ciphers_m else []
+
     return {
         "authentication": auth,
         "session":        session,
@@ -186,6 +207,7 @@ def parse_sshd_config(raw_output: str) -> dict[str, Any]:
         "weak_ciphers":   weak_ciphers,
         "weak_macs":      weak_macs,
         "weak_kex":       weak_kex,
+        "all_ciphers":    all_ciphers,
     }
 
 
@@ -234,6 +256,8 @@ def parse_ssh_audit(raw_output: str) -> dict[str, Any]:
     """
     if not raw_output or not raw_output.strip():
         return {}
+
+    raw_output = _strip_ansi(raw_output)
 
     result: dict[str, Any] = {
         "version":        "",
@@ -364,6 +388,10 @@ def build_security_profile(
     profile["ssh"]["forwarding"]     = sshd.get("forwarding", {})
     profile["ssh"]["features"]       = sshd.get("features", {})
 
+    # Expose full cipher list so AI can audit rule 5.1.6
+    if sshd.get("all_ciphers"):
+        profile["ssh"]["all_ciphers"] = sshd["all_ciphers"]
+
     # Merge logging into features to keep the schema slim
     if sshd.get("logging"):
         profile["ssh"]["features"].update(sshd["logging"])
@@ -466,7 +494,7 @@ if __name__ == "__main__":
     audit_output = ""
     try:
         result = subprocess.run(
-            ["ssh-audit", "-p", args.port, args.target],
+            ["ssh-audit", "-n", "-p", args.port, args.target],
             capture_output=True,
             text=True,
             timeout=30,

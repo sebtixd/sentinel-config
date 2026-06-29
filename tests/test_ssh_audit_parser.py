@@ -306,6 +306,19 @@ class TestParseSshAudit(unittest.TestCase):
         self.assertEqual(parse_ssh_audit(""), {})
         self.assertEqual(parse_ssh_audit("   "), {})
 
+    def test_ssh_audit_with_ansi_colors(self):
+        ansi_output = (
+            "\x1b[1;31m(kex)\x1b[0m diffie-hellman-group14-sha1  \x1b[33m-- [fail] weak DH\x1b[0m\n"
+            "\x1b[1;32m(enc)\x1b[0m aes128-cbc \x1b[31m-- [fail] weak block mode\x1b[0m\n"
+        )
+        result = parse_ssh_audit(ansi_output)
+        
+        kex_algos = [e["algorithm"] for e in result["weak_kex"]]
+        cipher_algos = [e["algorithm"] for e in result["weak_ciphers"]]
+        
+        self.assertIn("diffie-hellman-group14-sha1", kex_algos)
+        self.assertIn("aes128-cbc", cipher_algos)
+
 
 # ---------------------------------------------------------------------------
 # Tests: build_security_profile
