@@ -1,9 +1,10 @@
 """
 main.py
 =======
-Connects to a remote Linux machine via SSH, collects FTP-related
-system data remotely, then uses ftp_parser to produce a structured
-JSON security profile of the remote FTP configuration.
+Connects to a remote Linux machine via SSH (default) or a Windows Server 2016
+machine via WinRM (--target-os windows), collects system configuration data
+remotely, parses it, and produces a structured JSON security profile, then
+runs a Gemini-powered CIS benchmark compliance report.
 """
 
 import argparse
@@ -36,6 +37,19 @@ try:
     from tools.ssh_audit_parser import build_security_profile as parse_ssh_data
 except ImportError:
     print("Error: 'ssh_audit_parser.py' not found in tools/.", file=sys.stderr)
+    sys.exit(1)
+
+try:
+    import winrm
+    from winrm.exceptions import WinRMTransportError, WinRMOperationTimeoutError
+except ImportError:
+    print("Error: 'pywinrm' is not installed. Run: pip install pywinrm", file=sys.stderr)
+    sys.exit(1)
+
+try:
+    from tools.secedit_parser import parse_password_policy
+except ImportError:
+    print("Error: 'secedit_parser.py' not found in tools/.", file=sys.stderr)
     sys.exit(1)
 
 import os
@@ -148,39 +162,117 @@ def main() -> None:
     # Argument parsing
     # -------------------------------------------------------------------------
     parser = argparse.ArgumentParser(
-        description="Audit the FTP security configuration of a remote Linux machine."
+        description="Audit the security configuration of a remote Linux or Windows machine."
     )
-    parser.add_argument("username",          help="SSH username")
+    parser.add_argument("username",          help="SSH/WinRM username")
     parser.add_argument("hostname",          help="Remote hostname or IP address")
-    parser.add_argument("--port",            type=int, default=22,
-                        help="SSH port (default: 22)")
+    parser.add_argument("--port",            type=int, default=None,
+                        help="Port (default: 22 for SSH, 5985 for WinRM HTTP, 5986 for WinRM HTTPS)")
     parser.add_argument("--password",        default=None,
-                        help="SSH password (prompted if omitted)")
+                        help="SSH/WinRM password (prompted if omitted)")
     parser.add_argument("--key-filename",    default=None,
-                        help="Path to SSH private key file")
+                        help="Path to SSH private key file (Linux only)")
     parser.add_argument("--cis-rules",       default=None,
                         help="Path to CIS benchmark rules markdown file "
-                             "(default: cis_extracted_rules.md beside main.py)")
+                             "(default: cis_extracted_rules.md for Linux, "
+                             "password-policy.md for Windows)")
+    parser.add_argument("--target-os",       choices=["linux", "windows"], default="linux",
+                        help="Target OS to audit (default: linux)")
     args = parser.parse_args()
 
     # Prompt for password securely if neither a password nor a key was given
     password = args.password
     if not args.key_filename and not password:
+        prompt_label = "WinRM" if args.target_os == "windows" else "SSH"
         password = getpass.getpass(
-            f"SSH password for {args.username}@{args.hostname}: "
+            f"{prompt_label} password for {args.username}@{args.hostname}: "
         )
 
-    # -------------------------------------------------------------------------
+    # =========================================================================
+    # WINDOWS PATH  (--target-os windows)
+    # =========================================================================
+    if args.target_os == "windows":
+        win_port = args.port if args.port is not None else 5985
+        win_endpoint = f"http://{args.hostname}:{win_port}/wsman"
+        print(f"[*] Connecting to {args.username}@{args.hostname} via WinRM…", file=sys.stderr)
+        try:
+            win_session = winrm.Session(win_endpoint, auth=(args.username, password), transport="ntlm")
+        except (WinRMTransportError, WinRMOperationTimeoutError) as exc:
+            print(f"[-] WinRM connection error: {exc}", file=sys.stderr)
+            sys.exit(1)
+        print("[+] WinRM session established.", file=sys.stderr)
+
+        # -- secedit export --
+        temp_file = r"C:\Windows\Temp\sentinel_secpol.cfg"
+        print("[*] Running secedit export…", file=sys.stderr)
+        try:
+            r = win_session.run_cmd("secedit", ["/export", "/cfg", temp_file, "/quiet"])
+        except (WinRMTransportError, WinRMOperationTimeoutError) as exc:
+            print(f"[-] WinRM error during secedit export: {exc}", file=sys.stderr)
+            sys.exit(1)
+        if r.status_code != 0:
+            print(f"[-] secedit export failed (exit {r.status_code}): {r.std_err.decode('utf-8', errors='replace')}",
+                  file=sys.stderr)
+            sys.exit(1)
+
+        # -- read the exported file --
+        print("[*] Reading back secedit output…", file=sys.stderr)
+        try:
+            r = win_session.run_cmd("type", [temp_file])
+        except (WinRMTransportError, WinRMOperationTimeoutError) as exc:
+            print(f"[-] WinRM error reading secedit output: {exc}", file=sys.stderr)
+            sys.exit(1)
+        if r.status_code != 0:
+            print(f"[-] Failed to read secedit file (exit {r.status_code})", file=sys.stderr)
+            sys.exit(1)
+        try:
+            secedit_raw = r.std_out.decode("utf-8")
+        except UnicodeDecodeError:
+            secedit_raw = r.std_out.decode("cp1252", errors="replace")
+
+        # -- cleanup: ignore failures --
+        try:
+            win_session.run_cmd("del", [temp_file])
+        except Exception:
+            print("[warn] Cleanup of remote temp file failed — continuing.", file=sys.stderr)
+        print("[+] Password policy data collected.", file=sys.stderr)
+
+        # -- parse and merge --
+        password_policy_data = parse_password_policy(secedit_raw)
+        combined = {"password_policy": password_policy_data}
+        print(json.dumps(combined, indent=2))
+
+        # -- CIS compliance report --
+        cis_rules_path = args.cis_rules or os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "password-policy.md"
+        )
+        if os.path.isfile(cis_rules_path):
+            print(f"\n[*] Running CIS compliance audit using {cis_rules_path}…", file=sys.stderr)
+            cis_rules_text = open(cis_rules_path, encoding="utf-8").read()
+            report = generate_compliance_report(json.dumps(combined, indent=2), cis_rules_text)
+            print("\n" + "=" * 70, file=sys.stderr)
+            print("  CIS BENCHMARK COMPLIANCE REPORT", file=sys.stderr)
+            print("=" * 70 + "\n", file=sys.stderr)
+            print(report, file=sys.stderr)
+        else:
+            print(f"[warn] CIS rules file not found at: {cis_rules_path}", file=sys.stderr)
+            print("[warn] Skipping compliance audit. Use --cis-rules to specify the path.", file=sys.stderr)
+        return
+
+    # =========================================================================
+    # LINUX PATH  (--target-os linux, the default)
+    # =========================================================================
     # Establish SSH connection
     # -------------------------------------------------------------------------
+    ssh_port = args.port if args.port is not None else 22
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
     try:
-        print(f"[*] Connecting to {args.username}@{args.hostname}:{args.port}…", file=sys.stderr)
+        print(f"[*] Connecting to {args.username}@{args.hostname}:{ssh_port}…", file=sys.stderr)
         ssh.connect(
             hostname=args.hostname,
-            port=args.port,
+            port=ssh_port,
             username=args.username,
             password=password,
             key_filename=args.key_filename,
@@ -349,12 +441,12 @@ def main() -> None:
     # -------------------------------------------------------------------------
     # Step 5 – Run local ssh-audit against the remote host
     # -------------------------------------------------------------------------
-    print(f"[*] Running local ssh-audit against {args.hostname}:{args.port}…", file=sys.stderr)
+    print(f"[*] Running local ssh-audit against {args.hostname}:{ssh_port}…", file=sys.stderr)
     ssh_audit_out = ""
     try:
         import subprocess
         _audit_res = subprocess.run(
-            ["ssh-audit", "-n", "-p", str(args.port), args.hostname],
+            ["ssh-audit", "-n", "-p", str(ssh_port), args.hostname],
             capture_output=True, text=True, timeout=30,
         )
         ssh_audit_out = _audit_res.stdout
@@ -410,7 +502,7 @@ def main() -> None:
     # -------------------------------------------------------------------------
     cis_rules_path = args.cis_rules or os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "cis_extracted_rules.md"
-    )
+    )  # Windows default already handled in the windows branch above
     if os.path.isfile(cis_rules_path):
         print(f"\n[*] Running CIS compliance audit using {cis_rules_path}…", file=sys.stderr)
         cis_rules_text = open(cis_rules_path, encoding="utf-8").read()
