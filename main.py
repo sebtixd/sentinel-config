@@ -10,33 +10,14 @@ runs a Gemini-powered CIS benchmark compliance report.
 import argparse
 import getpass
 import json
+import logging
 import sys
-import time
+import os
 
 try:
     import paramiko
 except ImportError:
     print("Error: 'paramiko' is not installed. Run: pip install paramiko", file=sys.stderr)
-    sys.exit(1)
-
-# Import parse_ftp_data directly so we don't need a subprocess pipe.
-# ftp_parser.py must be in the same directory.
-try:
-    from tools.ftp_parser import parse_ftp_data
-except ImportError:
-    print("Error: 'ftp_parser.py' not found in tools/.", file=sys.stderr)
-    sys.exit(1)
-
-try:
-    from tools.telnet_parser import parse_telnet_data
-except ImportError:
-    print("Error: 'telnet_parser.py' not found in tools/.", file=sys.stderr)
-    sys.exit(1)
-
-try:
-    from tools.ssh_audit_parser import build_security_profile as parse_ssh_data
-except ImportError:
-    print("Error: 'ssh_audit_parser.py' not found in tools/.", file=sys.stderr)
     sys.exit(1)
 
 try:
@@ -46,217 +27,197 @@ except ImportError:
     print("Error: 'pywinrm' is not installed. Run: pip install pywinrm", file=sys.stderr)
     sys.exit(1)
 
+# ---------------------------------------------------------------------------
+# Logging configuration — structured, levelled output to stderr
+# ---------------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(levelname)s] %(message)s",
+    stream=sys.stderr,
+)
+log = logging.getLogger("sentinel")
+
+# Collectors
 try:
-    from tools.secedit_parser import parse_password_policy
-except ImportError:
-    print("Error: 'secedit_parser.py' not found in tools/.", file=sys.stderr)
+    from collectors.collect_ssh import collect_ssh_from_ssh
+    from collectors.ssh_bridges import (
+        collect_privilege_escalation_from_ssh,
+        collect_file_permissions_from_ssh,
+        collect_user_accounts_from_ssh,
+        collect_ufw_from_ssh,
+        collect_auditd_from_ssh,
+        collect_filesystem_from_ssh,
+        collect_package_management_from_ssh,
+        collect_apparmor_from_ssh,
+        collect_bootloader_from_ssh,
+        collect_process_hardening_from_ssh,
+        collect_warning_banners_from_ssh,
+        collect_gnome_from_ssh,
+        collect_services_from_ssh,
+        collect_time_sync_from_ssh,
+        collect_job_schedulers_from_ssh,
+        collect_network_config_from_ssh,
+        collect_pam_from_ssh,
+        collect_system_logging_from_ssh,
+        collect_integrity_checking_from_ssh,
+    )
+    from tools.ssh_collector_runner import run_collector_over_ssh
+except ImportError as exc:
+    print(f"Error importing collectors: {exc}", file=sys.stderr)
     sys.exit(1)
 
-import os
-from dotenv import load_dotenv
-load_dotenv()  # load .env into os.environ before reading keys
-
-from google import genai
-from google.genai import errors as genai_errors
-from google.genai import types as genai_types
-_raw_keys = [
-    os.environ.get("GEMINI-API-KEY"),
-    os.environ.get("GEMINI-API-KEY2"),
-    os.environ.get("GEMINI-API-KEY3"),
-]
-CLIENTS = [genai.Client(api_key=k) for k in _raw_keys if k]
-if not CLIENTS:
-    raise RuntimeError("No GEMINI API keys found in .env")
-
-MODELS = ["gemini-2.5-flash", "gemini-2.0-flash"]
-
-def generate_with_retry(max_retries=3, **kwargs):
-    """Rotate through API keys, then model fallbacks, on 503/429 errors."""
-    for model in MODELS:
-        for key_idx, api_client in enumerate(CLIENTS):
-            for attempt in range(max_retries):
-                try:
-                    return api_client.models.generate_content(model=model, **kwargs)
-                except (genai_errors.ServerError, genai_errors.ClientError) as e:
-                    # Safely get status code
-                    s_code = getattr(e, 'status_code', None) or getattr(e, 'code', None)
-                    
-                    # 503 = Service Unavailable, 429 = Rate Limit
-                    is_transient = s_code in (503, 429)
-                    if not is_transient:
-                        raise
-                    
-                    if attempt < max_retries - 1:
-                        wait = 2 ** attempt
-                        reason = "unavailable" if s_code == 503 else "rate-limited"
-                        print(f"[retry] Key {key_idx + 1}/{len(CLIENTS)}, model={model} {reason} (attempt {attempt + 1}/{max_retries}). Retrying in {wait}s...")
-                        time.sleep(wait)
-                    else:
-                        print(f"[rotate] Key {key_idx + 1} exhausted ({s_code}) for {model}, trying next key...")
-                        break  # move to next key
-        print(f"[fallback] All keys exhausted for {model}, switching model...")
-    raise RuntimeError("All API keys and models exhausted. Please try again later.")
-
-
-def generate_compliance_report(profile_json: str, cis_rules: str) -> str:
-    """Send the security profile + CIS rules to Gemini for compliance analysis."""
-    prompt = f"""You are a security compliance auditor.
-
-Below are the CIS Ubuntu 24.04 LTS Benchmark rules for FTP, Telnet, and SSH:
-
---- CIS RULES ---
-{cis_rules}
---- END CIS RULES ---
-
-Below is the security profile collected from the remote machine (JSON):
-
---- SECURITY PROFILE ---
-{profile_json}
---- END SECURITY PROFILE ---
-
-For each CIS rule listed above, determine whether the machine's configuration PASSES or FAILS.
-Output a structured compliance report with:
-- Rule ID and title
-- Status: PASS / FAIL / UNKNOWN (if data is insufficient to determine)
-- Evidence: the relevant value(s) from the profile that justify the verdict
-- Recommendation: what to fix if the status is FAIL
-
-Be concise but precise. Group results by FTP, Telnet, and SSH sections."""
-
-    response = generate_with_retry(
-        contents=prompt,
-        config=genai_types.GenerateContentConfig(temperature=0.1),
+# Tools
+try:
+    from tools.secedit_parser import parse_password_policy
+    from tools.ai_analysis import generate_compliance_report, analyze_suid_sgid
+    from tools.report import save_reports_to_pdf
+    from tools.rule_registry import (
+        parse_and_validate_rules,
+        get_required_collectors,
+        format_rule_list,
     )
-    return response.text
-
-
-
-
-def remote_run(ssh: paramiko.SSHClient, cmd: str, timeout: int = 10) -> str:
-    """Execute a command on the remote machine and return its stdout."""
-    try:
-        _, stdout, _ = ssh.exec_command(cmd, timeout=timeout)
-        return stdout.read().decode("utf-8", errors="replace")
-    except Exception:
-        return ""
-
-
-def remote_run_sudo(ssh: paramiko.SSHClient, cmd: str, password: str = "", timeout: int = 10) -> str:
-    """Execute a command on the remote machine via sudo -S and return its stdout."""
-    if not password:
-        sudo_cmd = f"sudo -n {cmd}"
-    else:
-        sudo_cmd = f"sudo -S {cmd}"
-    try:
-        stdin, stdout, stderr = ssh.exec_command(sudo_cmd, timeout=timeout)
-        if password:
-            stdin.write(password + "\n")
-            stdin.flush()
-        return stdout.read().decode("utf-8", errors="replace")
-    except Exception:
-        return ""
+except ImportError as exc:
+    print(f"Error importing tools: {exc}", file=sys.stderr)
+    sys.exit(1)
 
 
 def main() -> None:
+    if "--list-rules" in sys.argv:
+        print(format_rule_list())
+        sys.exit(0)
+
     # -------------------------------------------------------------------------
     # Argument parsing
     # -------------------------------------------------------------------------
     parser = argparse.ArgumentParser(
         description="Audit the security configuration of a remote Linux or Windows machine."
     )
-    parser.add_argument("username",          help="SSH/WinRM username")
-    parser.add_argument("hostname",          help="Remote hostname or IP address")
+    parser.add_argument("username",          nargs="?", default=None, help="SSH/WinRM username")
+    parser.add_argument("hostname",          nargs="?", default=None, help="Remote hostname or IP address")
     parser.add_argument("--port",            type=int, default=None,
-                        help="Port (default: 22 for SSH, 5985 for WinRM HTTP, 5986 for WinRM HTTPS)")
+                         help="Port (default: 22 for SSH, 5985 for WinRM HTTP, 5986 for WinRM HTTPS)")
     parser.add_argument("--password",        default=None,
-                        help="SSH/WinRM password (prompted if omitted)")
+                         help="SSH/WinRM password (prompted if omitted)")
     parser.add_argument("--key-filename",    default=None,
-                        help="Path to SSH private key file (Linux only)")
-    parser.add_argument("--cis-rules",       default=None,
-                        help="Path to CIS benchmark rules markdown file "
-                             "(default: cis_extracted_rules.md for Linux, "
-                             "password-policy.md for Windows)")
+                         help="Path to SSH private key file (Linux only)")
     parser.add_argument("--target-os",       choices=["linux", "windows"], default="linux",
-                        help="Target OS to audit (default: linux)")
+                         help="Target OS (default: linux)")
+    parser.add_argument("--cis-rules",       default=None,
+                         help="Path to the CIS extracted rules Markdown file (default: benchmarks/cis_extracted_rules.md)")
+    parser.add_argument("--rules", "--rule-ids", default=None,
+                         help="Audit specific CIS rule identifier(s), comma-separated (e.g. --rules 5.1.20,5.4.1.1,7.1.5) or parent section (e.g. --rules 5.1)")
+    parser.add_argument("--list-rules",      action="store_true",
+                         help="List all implemented CIS benchmark rules and exit")
+    parser.add_argument("--output-dir",      default=".",
+                         help="Directory to write PDF reports into (default: current directory)")
+    parser.add_argument("--output-prefix",   default=None,
+                         help="Filename prefix for PDF reports (default: hostname_YYYYMMDD_HHMMSS)")
     args = parser.parse_args()
 
-    # Prompt for password securely if neither a password nor a key was given
+    if args.list_rules:
+        print(format_rule_list())
+        sys.exit(0)
+
+    if not args.username or not args.hostname:
+        parser.error("the following arguments are required: username, hostname")
+
+    # Validate rules if provided
+    requested_rules = None
+    required_collectors = None
+    if args.rules:
+        try:
+            requested_rules = parse_and_validate_rules(args.rules)
+            required_collectors = get_required_collectors(requested_rules)
+            log.info("Auditing requested CIS rules: %s", ", ".join(requested_rules))
+        except ValueError as err:
+            log.error(str(err))
+            sys.exit(1)
+
+    # Prompt for password if not specified/key not used
     password = args.password
-    if not args.key_filename and not password:
-        prompt_label = "WinRM" if args.target_os == "windows" else "SSH"
-        password = getpass.getpass(
-            f"{prompt_label} password for {args.username}@{args.hostname}: "
-        )
+    if not password and not args.key_filename:
+        password = getpass.getpass(prompt=f"[prompt] Enter password for {args.username}: ")
+
+    # Build output prefix (timestamped, hostname-based by default)
+    import datetime
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_prefix = args.output_prefix or f"{args.hostname}_{ts}"
+    os.makedirs(args.output_dir, exist_ok=True)
 
     # =========================================================================
-    # WINDOWS PATH  (--target-os windows)
+    # TARGET OS BRANCHING
     # =========================================================================
     if args.target_os == "windows":
-        win_port = args.port if args.port is not None else 5985
-        win_endpoint = f"http://{args.hostname}:{win_port}/wsman"
-        print(f"[*] Connecting to {args.username}@{args.hostname} via WinRM…", file=sys.stderr)
+        # ---------------------------------------------------------------------
+        # WINDOWS PATH
+        # ---------------------------------------------------------------------
+        winrm_port = args.port if args.port is not None else 5985
+        winrm_endpoint = f"http://{args.hostname}:{winrm_port}/wsman"
+        log.info("Connecting to Windows host via WinRM at %s…", winrm_endpoint)
+        
         try:
-            win_session = winrm.Session(win_endpoint, auth=(args.username, password), transport="ntlm")
-        except (WinRMTransportError, WinRMOperationTimeoutError) as exc:
-            print(f"[-] WinRM connection error: {exc}", file=sys.stderr)
+            session = winrm.Session(
+                winrm_endpoint,
+                auth=(args.username, password),
+                transport="ntlm",
+            )
+            
+            log.info("Retrieving security policy via secedit…")
+            res_secedit = session.run_ps("secedit /export /cfg C:\\Windows\\Temp\\secedit_out.cfg")
+            if res_secedit.status_code != 0:
+                log.error("secedit export failed: %s", res_secedit.std_err.decode())
+                sys.exit(1)
+                
+            res_read = session.run_ps("Get-Content C:\\Windows\\Temp\\secedit_out.cfg")
+            if res_read.status_code != 0:
+                log.error("Failed to read secedit export: %s", res_read.std_err.decode())
+                sys.exit(1)
+                
+            secedit_content = res_read.std_out.decode("utf-16", errors="replace")
+            
+            session.run_ps("Remove-Item C:\\Windows\\Temp\\secedit_out.cfg -ErrorAction SilentlyContinue")
+            
+        except WinRMTransportError as exc:
+            log.error("WinRM Transport error: %s", exc)
             sys.exit(1)
-        print("[+] WinRM session established.", file=sys.stderr)
+        except WinRMOperationTimeoutError as exc:
+            log.error("WinRM operation timed out: %s", exc)
+            sys.exit(1)
+        except Exception as exc:
+            log.error("Connection error: %s", exc)
+            sys.exit(1)
 
-        # -- secedit export --
-        temp_file = r"C:\Windows\Temp\sentinel_secpol.cfg"
-        print("[*] Running secedit export…", file=sys.stderr)
-        try:
-            r = win_session.run_cmd("secedit", ["/export", "/cfg", temp_file, "/quiet"])
-        except (WinRMTransportError, WinRMOperationTimeoutError) as exc:
-            print(f"[-] WinRM error during secedit export: {exc}", file=sys.stderr)
-            sys.exit(1)
-        if r.status_code != 0:
-            print(f"[-] secedit export failed (exit {r.status_code}): {r.std_err.decode('utf-8', errors='replace')}",
-                  file=sys.stderr)
-            sys.exit(1)
+        log.info("Parsing local security policy…")
+        sec_policy = parse_password_policy(secedit_content)
 
-        # -- read the exported file --
-        print("[*] Reading back secedit output…", file=sys.stderr)
-        try:
-            r = win_session.run_cmd("type", [temp_file])
-        except (WinRMTransportError, WinRMOperationTimeoutError) as exc:
-            print(f"[-] WinRM error reading secedit output: {exc}", file=sys.stderr)
-            sys.exit(1)
-        if r.status_code != 0:
-            print(f"[-] Failed to read secedit file (exit {r.status_code})", file=sys.stderr)
-            sys.exit(1)
-        try:
-            secedit_raw = r.std_out.decode("utf-8")
-        except UnicodeDecodeError:
-            secedit_raw = r.std_out.decode("cp1252", errors="replace")
+        log.info("Collecting additional system info…")
+        res_lockout = session.run_ps("net accounts")
+        lockout_out = res_lockout.std_out.decode("utf-8", errors="replace") if res_lockout.status_code == 0 else ""
 
-        # -- cleanup: ignore failures --
-        try:
-            win_session.run_cmd("del", [temp_file])
-        except Exception:
-            print("[warn] Cleanup of remote temp file failed — continuing.", file=sys.stderr)
-        print("[+] Password policy data collected.", file=sys.stderr)
-
-        # -- parse and merge --
-        password_policy_data = parse_password_policy(secedit_raw)
-        combined = {"password_policy": password_policy_data}
+        combined = {
+            "os": "windows",
+            "security_policy": sec_policy,
+            "net_accounts_raw": lockout_out.strip(),
+        }
+        
         print(json.dumps(combined, indent=2))
 
-        # -- CIS compliance report --
         cis_rules_path = args.cis_rules or os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "password-policy.md"
+            os.path.dirname(os.path.abspath(__file__)), "benchmarks", "rules.md"
         )
+        report = ""
         if os.path.isfile(cis_rules_path):
-            print(f"\n[*] Running CIS compliance audit using {cis_rules_path}…", file=sys.stderr)
+            log.info("Running CIS compliance audit using %s…", cis_rules_path)
             cis_rules_text = open(cis_rules_path, encoding="utf-8").read()
-            report = generate_compliance_report(json.dumps(combined, indent=2), cis_rules_text)
-            print("\n" + "=" * 70, file=sys.stderr)
-            print("  CIS BENCHMARK COMPLIANCE REPORT", file=sys.stderr)
-            print("=" * 70 + "\n", file=sys.stderr)
+            report = generate_compliance_report(json.dumps(combined, indent=2), cis_rules_text, requested_rules=requested_rules)
+            log.info("\n" + "=" * 70 + "\n  CIS BENCHMARK COMPLIANCE REPORT\n" + "=" * 70)
             print(report, file=sys.stderr)
         else:
-            print(f"[warn] CIS rules file not found at: {cis_rules_path}", file=sys.stderr)
-            print("[warn] Skipping compliance audit. Use --cis-rules to specify the path.", file=sys.stderr)
+            log.warning("CIS rules file not found at: %s", cis_rules_path)
+            log.warning("Skipping compliance audit. Use --cis-rules to specify the path.")
+            
+        save_reports_to_pdf(combined, cis_report=report,
+                            output_dir=args.output_dir, prefix=output_prefix)
         return
 
     # =========================================================================
@@ -266,10 +227,19 @@ def main() -> None:
     # -------------------------------------------------------------------------
     ssh_port = args.port if args.port is not None else 22
     ssh = paramiko.SSHClient()
+
+    # Security warning: AutoAddPolicy trusts new host keys on first connection
+    # without verification. For production use, configure known_hosts and use
+    # RejectPolicy, or pin the expected host key fingerprint.
+    log.warning(
+        "SSH host key policy is set to AutoAddPolicy (Trust On First Use). "
+        "Ensure you trust the host %s before proceeding, or configure known_hosts.",
+        args.hostname,
+    )
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
     try:
-        print(f"[*] Connecting to {args.username}@{args.hostname}:{ssh_port}…", file=sys.stderr)
+        log.info("Connecting to %s@%s:%d…", args.username, args.hostname, ssh_port)
         ssh.connect(
             hostname=args.hostname,
             port=ssh_port,
@@ -278,243 +248,207 @@ def main() -> None:
             key_filename=args.key_filename,
             timeout=10,
         )
-        print("[+] Connection established.", file=sys.stderr)
+        log.info("Connection established.")
     except paramiko.AuthenticationException:
-        print("[-] Authentication failed. Check username / password / key.", file=sys.stderr)
+        log.error("Authentication failed. Check username / password / key.")
         sys.exit(1)
     except paramiko.SSHException as exc:
-        print(f"[-] SSH error: {exc}", file=sys.stderr)
+        log.error("SSH error: %s", exc)
         sys.exit(1)
     except Exception as exc:
-        print(f"[-] Connection error: {exc}", file=sys.stderr)
+        log.error("Connection error: %s", exc)
         sys.exit(1)
 
     try:
-        # -------------------------------------------------------------------------
-        # Step 1 – Check if an FTP service is installed on the remote machine
-        # -------------------------------------------------------------------------
-        print("[*] Checking for FTP service on remote…", file=sys.stderr)
-        svc_check = remote_run(
-            ssh,
-            "systemctl list-unit-files 2>/dev/null | grep -E '^(vsftpd|proftpd|pure-ftpd)\\.service' || "
-            "dpkg -l 2>/dev/null | awk '/^ii/ && /(vsftpd|proftpd|pure-ftpd)/' || "
-            "rpm -qa 2>/dev/null | grep -E '^(vsftpd|proftpd|pure-ftpd)'"
-        )
-        if not svc_check.strip():
-            print("[-] No FTP service (vsftpd/proftpd/pure-ftpd) found on the remote machine.",
-                  file=sys.stderr)
-            sys.exit(1)
-        print("[+] FTP service detected.", file=sys.stderr)
+        combined = {}
+        file_perms_data = {}
 
-        # -------------------------------------------------------------------------
-        # Step 2 – Collect all data remotely (mirrors what ftp_parser.py CLI does)
-        # -------------------------------------------------------------------------
-        print("[*] Collecting remote FTP data…", file=sys.stderr)
+        if required_collectors is None:
+            # Full audit mode — run all collectors across Sections 1 through 7
+            log.info("Collecting remote SSH data (CIS 5.1)…")
+            combined.update(collect_ssh_from_ssh(ssh, args.hostname, ssh_port, password))
 
-        # systemctl status for any FTP service
-        systemctl_out = ""
-        for svc in ("vsftpd", "proftpd", "pure-ftpd"):
-            out = remote_run(ssh, f"systemctl status {svc} 2>/dev/null")
-            if out.strip():
-                systemctl_out = out
-                break
+            log.info("Collecting remote privilege escalation data (CIS 5.2)…")
+            combined["privilege_escalation"] = collect_privilege_escalation_from_ssh(ssh, password)
 
-        # Network sockets
-        network_out = remote_run(ssh, "ss -tulpn 2>/dev/null")
-        if not network_out.strip():
-            network_out = remote_run(ssh, "netstat -tulpn 2>/dev/null")
+            log.info("Collecting remote file permissions data (CIS 7.1)…")
+            file_perms_data = collect_file_permissions_from_ssh(ssh, password)
+            combined["file_permissions"] = file_perms_data
 
-        # Configuration file
-        config_out = remote_run(ssh, "cat /etc/vsftpd.conf 2>/dev/null")
-        if not config_out.strip():
-            config_out = remote_run(ssh, "cat /etc/proftpd/proftpd.conf 2>/dev/null")
-        if not config_out.strip():
-            config_out = remote_run(ssh, "cat /etc/pure-ftpd.conf 2>/dev/null")
+            log.info("Collecting remote user accounts data (CIS 5.4 / 7.2)…")
+            combined["user_accounts"] = collect_user_accounts_from_ssh(ssh, password)
 
-        # Firewall rules (requires sudo on the remote machine)
-        fw_out = remote_run_sudo(ssh, "ufw status verbose 2>/dev/null", password)
-        if not fw_out.strip():
-            fw_out = remote_run_sudo(ssh, "iptables -L -n 2>/dev/null", password)
-        if not fw_out.strip():
-            fw_out = remote_run_sudo(ssh, "firewall-cmd --list-all 2>/dev/null", password)
+            log.info("Collecting remote firewall data (CIS 4.1)…")
+            combined.update(collect_ufw_from_ssh(ssh, password))
 
-        # Active connections
-        activity_out = remote_run(ssh, "ss -tnp 2>/dev/null")
+            log.info("Collecting remote filesystem data (CIS 1.1)…")
+            combined.update(collect_filesystem_from_ssh(ssh, password))
 
-        # CIS 2.1.20 – TFTP server check
-        tftp_pkg_out = remote_run(ssh, "dpkg -l 'tftpd*' 'atftpd' 'tftp-hpa' 2>/dev/null")
-        if not tftp_pkg_out.strip():
-            tftp_pkg_out = remote_run(ssh, "rpm -qa 2>/dev/null | grep -iE 'tftp'")
-        tftp_systemctl_out = ""
-        for svc in ("tftpd-hpa", "atftpd", "tftp"):
-            out = remote_run(ssh, f"systemctl status {svc} 2>/dev/null")
-            if out.strip():
-                tftp_systemctl_out = out
-                break
+            log.info("Collecting remote package management data (CIS 1.2)…")
+            combined.update(collect_package_management_from_ssh(ssh, password))
 
-        # CIS 2.2.6 – FTP client check
-        ftp_client_out = remote_run(ssh, "dpkg -l 'ftp' 'lftp' 'ncftp' 'curl' 2>/dev/null | grep '^ii'")
-        if not ftp_client_out.strip():
-            ftp_client_out = remote_run(ssh, "rpm -qa 2>/dev/null | grep -iE '^ftp-|^lftp|^ncftp'")
+            log.info("Collecting remote AppArmor data (CIS 1.3)…")
+            combined.update(collect_apparmor_from_ssh(ssh, password))
 
-        # -------------------------------------------------------------------------
-        # Step 3 – Collect Telnet data remotely
-        # -------------------------------------------------------------------------
-        print("[*] Collecting remote Telnet data…", file=sys.stderr)
+            log.info("Collecting remote bootloader data (CIS 1.4)…")
+            combined.update(collect_bootloader_from_ssh(ssh, password))
 
-        # systemctl: try telnet, telnetd, then telnet.socket
-        telnet_systemctl_out = ""
-        for unit in ("telnet", "telnetd", "telnet.socket"):
-            out = remote_run(ssh, f"systemctl status {unit} 2>/dev/null")
-            if out.strip():
-                telnet_systemctl_out = out
-                break
+            log.info("Collecting remote process hardening data (CIS 1.5)…")
+            combined.update(collect_process_hardening_from_ssh(ssh, password))
 
-        # Package manager
-        telnet_pkg_out = remote_run(ssh, "dpkg -l 'telnet*' 2>/dev/null")
-        if not telnet_pkg_out.strip():
-            telnet_pkg_out = remote_run(ssh, "rpm -q telnet telnetd 2>/dev/null")
+            log.info("Collecting remote warning banners data (CIS 1.6)…")
+            combined.update(collect_warning_banners_from_ssh(ssh, password))
 
-        # CIS 2.2.4 – Telnet client check (separate from server packages)
-        telnet_client_out = remote_run(ssh, "dpkg -l 'telnet' 2>/dev/null | grep '^ii'")
-        if not telnet_client_out.strip():
-            telnet_client_out = remote_run(ssh, "rpm -q telnet 2>/dev/null")
+            log.info("Collecting remote GNOME data (CIS 1.7)…")
+            combined.update(collect_gnome_from_ssh(ssh, password))
 
-        # Network sockets — reuse the same ss output from FTP (same command)
-        telnet_network_out = network_out
+            log.info("Collecting remote services data (CIS 2.1 / 2.2)…")
+            combined.update(collect_services_from_ssh(ssh, password))
 
-        # inetd / xinetd config files
-        inetd_out   = remote_run(ssh, "cat /etc/inetd.conf 2>/dev/null")
-        xinetd_out  = remote_run(ssh, "cat /etc/xinetd.d/telnet 2>/dev/null")
+            log.info("Collecting remote time synchronization data (CIS 2.3)…")
+            combined.update(collect_time_sync_from_ssh(ssh, password))
 
-        # Check if inetd daemon itself is running (openbsd-inetd on Ubuntu/Debian)
-        inetd_systemctl_out = ""
-        for inetd_unit in ("openbsd-inetd", "inetd"):
-            out = remote_run(ssh, f"systemctl status {inetd_unit} 2>/dev/null")
-            if out.strip():
-                inetd_systemctl_out = out
-                break
+            log.info("Collecting remote job schedulers data (CIS 2.4)…")
+            combined.update(collect_job_schedulers_from_ssh(ssh, password))
 
-        # Firewall — reuse fw_out from FTP collection
-        telnet_fw_out = fw_out
+            log.info("Collecting remote network configuration data (CIS 3)…")
+            combined.update(collect_network_config_from_ssh(ssh, password))
 
-        # Active sessions
-        sessions_out = remote_run(ssh, "who 2>/dev/null")
-        if not sessions_out.strip():
-            sessions_out = remote_run(ssh, "w 2>/dev/null")
+            log.info("Collecting remote PAM data (CIS 5.3)…")
+            combined.update(collect_pam_from_ssh(ssh, password))
 
-        # -------------------------------------------------------------------------
-        # Step 4 – Collect SSH data
-        # -------------------------------------------------------------------------
-        print("[*] Collecting remote SSH data (sshd -T)…", file=sys.stderr)
-        _sshd_attempts = [
-            "/usr/sbin/sshd -T",
-            "sshd -T",
-            "cat /etc/ssh/sshd_config",
-        ]
-        sshd_out = ""
-        for _cmd in _sshd_attempts:
-            sshd_out = remote_run_sudo(ssh, _cmd, password)
-            if sshd_out.strip():
-                if "cat /etc/ssh/sshd_config" in _cmd:
-                    dropin = remote_run_sudo(ssh, "cat /etc/ssh/sshd_config.d/*.conf", password)
-                    if dropin.strip():
-                        sshd_out += "\n" + dropin
-                break
+            log.info("Collecting remote system logging data (CIS 6.1)…")
+            combined.update(collect_system_logging_from_ssh(ssh, password))
 
-        # CIS 5.1.1/5.1.2/5.1.3 – File permission checks for SSH config and host keys
-        print("[*] Collecting SSH file permissions…", file=sys.stderr)
-        ssh_config_perms = remote_run_sudo(
-            ssh, "stat -c '%a %U %G %n' /etc/ssh/sshd_config", password
-        )
-        ssh_privkey_perms = remote_run_sudo(
-            ssh, "stat -c '%a %U %G %n' /etc/ssh/ssh_host_*_key", password
-        )
-        ssh_pubkey_perms = remote_run_sudo(
-            ssh, "stat -c '%a %U %G %n' /etc/ssh/ssh_host_*_key.pub", password
-        )
+            log.info("Collecting remote system auditing data (CIS 6.2)…")
+            local_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "collectors", "auditd_collector.py")
+            combined.update(run_collector_over_ssh(ssh=ssh, script_path=local_script, password=password, timeout=60, fallback_key="system_auditing"))
+
+            log.info("Collecting remote integrity checking data (CIS 6.3)…")
+            combined.update(collect_integrity_checking_from_ssh(ssh, password))
+        else:
+            # Filtered audit mode — run only required collectors
+            if "ssh" in required_collectors:
+                log.info("Collecting remote SSH data…")
+                combined.update(collect_ssh_from_ssh(ssh, args.hostname, ssh_port, password))
+
+            if "privilege_escalation" in required_collectors:
+                log.info("Collecting remote privilege escalation data…")
+                combined["privilege_escalation"] = collect_privilege_escalation_from_ssh(ssh, password)
+
+            if "file_permissions" in required_collectors:
+                log.info("Collecting remote file permissions data (CIS 7.1)…")
+                file_perms_data = collect_file_permissions_from_ssh(ssh, password)
+                combined["file_permissions"] = file_perms_data
+
+            if "user_accounts" in required_collectors:
+                log.info("Collecting remote user accounts data (CIS 5.4 / 7.2)…")
+                combined["user_accounts"] = collect_user_accounts_from_ssh(ssh, password)
+
+            if "ufw" in required_collectors:
+                log.info("Collecting remote firewall data (CIS 4.1)…")
+                combined.update(collect_ufw_from_ssh(ssh, password))
+
+            if "filesystem" in required_collectors:
+                log.info("Collecting remote filesystem data (CIS 1.1)…")
+                combined.update(collect_filesystem_from_ssh(ssh, password))
+
+            if "package_management" in required_collectors:
+                log.info("Collecting remote package management data (CIS 1.2)…")
+                combined.update(collect_package_management_from_ssh(ssh, password))
+
+            if "apparmor" in required_collectors:
+                log.info("Collecting remote AppArmor data (CIS 1.3)…")
+                combined.update(collect_apparmor_from_ssh(ssh, password))
+
+            if "bootloader" in required_collectors:
+                log.info("Collecting remote bootloader data (CIS 1.4)…")
+                combined.update(collect_bootloader_from_ssh(ssh, password))
+
+            if "process_hardening" in required_collectors:
+                log.info("Collecting remote process hardening data (CIS 1.5)…")
+                combined.update(collect_process_hardening_from_ssh(ssh, password))
+
+            if "warning_banners" in required_collectors:
+                log.info("Collecting remote warning banners data (CIS 1.6)…")
+                combined.update(collect_warning_banners_from_ssh(ssh, password))
+
+            if "gnome" in required_collectors:
+                log.info("Collecting remote GNOME data (CIS 1.7)…")
+                combined.update(collect_gnome_from_ssh(ssh, password))
+
+            if "services" in required_collectors:
+                log.info("Collecting remote services data (CIS 2.1 / 2.2)…")
+                combined.update(collect_services_from_ssh(ssh, password))
+
+            if "time_sync" in required_collectors:
+                log.info("Collecting remote time synchronization data (CIS 2.3)…")
+                combined.update(collect_time_sync_from_ssh(ssh, password))
+
+            if "job_schedulers" in required_collectors:
+                log.info("Collecting remote job schedulers data (CIS 2.4)…")
+                combined.update(collect_job_schedulers_from_ssh(ssh, password))
+
+            if "network_config" in required_collectors:
+                log.info("Collecting remote network configuration data (CIS 3)…")
+                combined.update(collect_network_config_from_ssh(ssh, password))
+
+            if "pam" in required_collectors:
+                log.info("Collecting remote PAM data (CIS 5.3)…")
+                combined.update(collect_pam_from_ssh(ssh, password))
+
+            if "system_logging" in required_collectors:
+                log.info("Collecting remote system logging data (CIS 6.1)…")
+                combined.update(collect_system_logging_from_ssh(ssh, password))
+
+            if "auditd" in required_collectors:
+                log.info("Collecting remote system auditing data (CIS 6.2)…")
+                local_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "collectors", "auditd_collector.py")
+                combined.update(run_collector_over_ssh(ssh=ssh, script_path=local_script, password=password, timeout=60, fallback_key="system_auditing"))
+
+            if "integrity_checking" in required_collectors:
+                log.info("Collecting remote integrity checking data (CIS 6.3)…")
+                combined.update(collect_integrity_checking_from_ssh(ssh, password))
 
     finally:
         ssh.close()
-        print("[*] SSH connection closed.", file=sys.stderr)
-
-    # -------------------------------------------------------------------------
-    # Step 5 – Run local ssh-audit against the remote host
-    # -------------------------------------------------------------------------
-    print(f"[*] Running local ssh-audit against {args.hostname}:{ssh_port}…", file=sys.stderr)
-    ssh_audit_out = ""
-    try:
-        import subprocess
-        _audit_res = subprocess.run(
-            ["ssh-audit", "-n", "-p", str(ssh_port), args.hostname],
-            capture_output=True, text=True, timeout=30,
-        )
-        ssh_audit_out = _audit_res.stdout
-    except Exception as e:
-        print(f"[warn] ssh-audit failed: {e}", file=sys.stderr)
-
-    # -------------------------------------------------------------------------
-    # Step 6 – Parse and print all profiles merged in a single JSON object
-    # -------------------------------------------------------------------------
-    ftp_profile = parse_ftp_data(
-        systemctl_raw=systemctl_out,
-        network_raw=network_out,
-        config_raw=config_out,
-        firewall_raw=fw_out,
-        activity_raw=activity_out,
-    )
-    # Embed TFTP and FTP-client data directly so AI can evaluate CIS 2.1.20 and 2.2.6
-    ftp_profile.setdefault("ftp", {})
-    ftp_profile["ftp"]["tftp_server_packages"] = tftp_pkg_out.strip() or "not installed"
-    ftp_profile["ftp"]["tftp_service_status"]  = tftp_systemctl_out.strip() or "not running"
-    ftp_profile["ftp"]["ftp_client_packages"]  = ftp_client_out.strip() or "not installed"
-
-    telnet_profile = parse_telnet_data(
-        systemctl_raw=telnet_systemctl_out,
-        package_raw=telnet_pkg_out,
-        network_raw=telnet_network_out,
-        inetd_raw=inetd_out,
-        xinetd_raw=xinetd_out,
-        firewall_raw=telnet_fw_out,
-        sessions_raw=sessions_out,
-        inetd_systemctl_raw=inetd_systemctl_out,
-    )
-    # Embed telnet-client data so AI can evaluate CIS 2.2.4
-    telnet_profile.setdefault("telnet", {})
-    telnet_profile["telnet"]["telnet_client_packages"] = telnet_client_out.strip() or "not installed"
-
-    ssh_profile = parse_ssh_data(
-        sshd_output=sshd_out,
-        ssh_audit_output=ssh_audit_out,
-    )
-    # Embed SSH file permission data so AI can evaluate CIS 5.1.1/5.1.2/5.1.3
-    ssh_profile.setdefault("ssh", {})
-    ssh_profile["ssh"]["sshd_config_permissions"]  = ssh_config_perms.strip() or "unknown"
-    ssh_profile["ssh"]["ssh_privkey_permissions"]  = ssh_privkey_perms.strip() or "unknown"
-    ssh_profile["ssh"]["ssh_pubkey_permissions"]   = ssh_pubkey_perms.strip() or "unknown"
+        log.info("SSH connection closed.")
 
     # Merge all profiles into one JSON document
-    combined = {**ftp_profile, **telnet_profile, **ssh_profile}
     print(json.dumps(combined, indent=2))
 
     # -------------------------------------------------------------------------
-    # Step 7 – AI compliance audit against CIS benchmarks
+    # Step 8 – AI compliance audit against CIS benchmarks
     # -------------------------------------------------------------------------
     cis_rules_path = args.cis_rules or os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "cis_extracted_rules.md"
-    )  # Windows default already handled in the windows branch above
+    )
+    report = ""
     if os.path.isfile(cis_rules_path):
-        print(f"\n[*] Running CIS compliance audit using {cis_rules_path}…", file=sys.stderr)
+        log.info("Running CIS compliance audit using %s…", cis_rules_path)
         cis_rules_text = open(cis_rules_path, encoding="utf-8").read()
-        report = generate_compliance_report(json.dumps(combined, indent=2), cis_rules_text)
-        print("\n" + "=" * 70, file=sys.stderr)
-        print("  CIS BENCHMARK COMPLIANCE REPORT", file=sys.stderr)
-        print("=" * 70 + "\n", file=sys.stderr)
+        report = generate_compliance_report(json.dumps(combined, indent=2), cis_rules_text, requested_rules=requested_rules)
+        log.info("\n" + "=" * 70 + "\n  CIS BENCHMARK COMPLIANCE REPORT\n" + "=" * 70)
         print(report, file=sys.stderr)
     else:
-        print(f"[warn] CIS rules file not found at: {cis_rules_path}", file=sys.stderr)
-        print("[warn] Skipping compliance audit. Use --cis-rules to specify the path.", file=sys.stderr)
+        log.warning("CIS rules file not found at: %s", cis_rules_path)
+        log.warning("Skipping compliance audit. Use --cis-rules to specify the path.")
+
+    suid_sgid_section = file_perms_data.get("suid_sgid", {})
+    suid_report = ""
+    should_run_suid = (requested_rules is None) or any(r == "7.1.13" or r.startswith("7.1") or r.startswith("7.") for r in requested_rules)
+    if should_run_suid and suid_sgid_section.get("suid_sgid_files"):
+        log.info("Running SUID/SGID triage analysis (CIS 7.1.13)…")
+        suid_report = analyze_suid_sgid(suid_sgid_section)
+        log.info("\n" + "=" * 70 + "\n  SUID/SGID TRIAGE REPORT\n" + "=" * 70)
+        print(suid_report, file=sys.stderr)
+    elif should_run_suid:
+        log.info("No SUID/SGID files collected — skipping triage.")
+
+    save_reports_to_pdf(combined, cis_report=report, suid_report=suid_report,
+                        output_dir=args.output_dir, prefix=output_prefix)
 
 
 if __name__ == "__main__":
     main()
+

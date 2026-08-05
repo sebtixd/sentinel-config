@@ -1,0 +1,16 @@
+{
+  "run_id": "0.0.0.0_20260729_103656_3cc6",
+  "status": "failed",
+  "created_at": "2026-07-29T10:36:56.212677",
+  "hostname": "0.0.0.0",
+  "username": "sebtixd",
+  "target_os": "linux",
+  "rules_filter": "5.1",
+  "progress_message": "Audit failed.",
+  "profile": {},
+  "cis_report_markdown": "",
+  "suid_report_markdown": "",
+  "structured_rules": [],
+  "summary": {},
+  "error": "[Errno None] Unable to connect to port 22 on 0.0.0.0"
+}

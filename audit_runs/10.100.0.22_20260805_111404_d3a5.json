@@ -1,0 +1,160 @@
+{
+  "run_id": "10.100.0.22_20260805_111404_d3a5",
+  "status": "completed",
+  "created_at": "2026-08-05T11:14:04.862810",
+  "hostname": "10.100.0.22",
+  "username": "sebti",
+  "target_os": "linux",
+  "rules_filter": "1.7",
+  "progress_message": "Audit completed successfully.",
+  "profile": {
+    "gnome": {
+      "gdm_installed": false,
+      "gdm_service": {
+        "unit": "gdm3.service",
+        "enabled": "not-found",
+        "active": "inactive"
+      },
+      "gdm3_custom_conf": null,
+      "gdm3_custom_conf_content": null,
+      "dconf_settings": {},
+      "dconf_locks": [],
+      "errors": []
+    }
+  },
+  "cis_report_markdown": "## Section 1.7 \u2013 Configure GNOME Display Manager\n### Rule 1.7.1: Ensure GDM login banner is configured\n*   **Status**: PASS\n*   **Evidence**: GDM is not installed \u2014 rule not applicable to this server profile.\n*   **Recommendation**: None.\n\n### Rule 1.7.2: Ensure GDM disable-user-list is configured\n*   **Status**: PASS\n*   **Evidence**: GDM is not installed \u2014 rule not applicable to this server profile.\n*   **Recommendation**: None.\n\n### Rule 1.7.3: Ensure GDM screen lock is configured\n*   **Status**: PASS\n*   **Evidence**: GDM is not installed \u2014 rule not applicable to this server profile.\n*   **Recommendation**: None.\n\n### Rule 1.7.4: Ensure GDM automount is configured\n*   **Status**: PASS\n*   **Evidence**: GDM is not installed \u2014 rule not applicable to this server profile.\n*   **Recommendation**: None.\n\n### Rule 1.7.5: Ensure GDM autorun-never is configured\n*   **Status**: PASS\n*   **Evidence**: GDM is not installed \u2014 rule not applicable to this server profile.\n*   **Recommendation**: None.\n\n### Rule 1.7.6: Ensure XDMCP is not enabled\n*   **Status**: PASS\n*   **Evidence**: GDM is not installed \u2014 rule not applicable to this server profile.\n*   **Recommendation**: None.\n\n### Rule 1.7.7: Ensure Xwayland is configured\n*   **Status**: PASS\n*   **Evidence**: GDM is not installed \u2014 rule not applicable to this server profile.\n*   **Recommendation**: None.",
+  "suid_report_markdown": "",
+  "structured_rules": [
+    {
+      "rule_id": "1.7.1",
+      "section": "1.7",
+      "section_num": "1",
+      "title": "Ensure GDM login banner is configured",
+      "status": "PASS",
+      "evidence": "GDM is not installed \u2014 rule not applicable to this server profile.",
+      "recommendation": "None."
+    },
+    {
+      "rule_id": "1.7.2",
+      "section": "1.7",
+      "section_num": "1",
+      "title": "Ensure GDM disable-user-list is enabled",
+      "status": "PASS",
+      "evidence": "GDM is not installed \u2014 rule not applicable to this server profile.",
+      "recommendation": "None."
+    },
+    {
+      "rule_id": "1.7.3",
+      "section": "1.7",
+      "section_num": "1",
+      "title": "Ensure GDM screen lock is configured",
+      "status": "PASS",
+      "evidence": "GDM is not installed \u2014 rule not applicable to this server profile.",
+      "recommendation": "None."
+    },
+    {
+      "rule_id": "1.7.4",
+      "section": "1.7",
+      "section_num": "1",
+      "title": "Ensure GDM automounting is disabled",
+      "status": "PASS",
+      "evidence": "GDM is not installed \u2014 rule not applicable to this server profile.",
+      "recommendation": "None."
+    },
+    {
+      "rule_id": "1.7.5",
+      "section": "1.7",
+      "section_num": "1",
+      "title": "Ensure GDM autorun-never is enabled",
+      "status": "PASS",
+      "evidence": "GDM is not installed \u2014 rule not applicable to this server profile.",
+      "recommendation": "None."
+    },
+    {
+      "rule_id": "1.7.6",
+      "section": "1.7",
+      "section_num": "1",
+      "title": "Ensure XDMCP is disabled",
+      "status": "PASS",
+      "evidence": "GDM is not installed \u2014 rule not applicable to this server profile.",
+      "recommendation": "None."
+    },
+    {
+      "rule_id": "1.7.7",
+      "section": "1.7",
+      "section_num": "1",
+      "title": "Ensure Xwayland is configured",
+      "status": "PASS",
+      "evidence": "GDM is not installed \u2014 rule not applicable to this server profile.",
+      "recommendation": "None."
+    }
+  ],
+  "summary": {
+    "total_checked": 7,
+    "pass_count": 7,
+    "fail_count": 0,
+    "info_count": 0,
+    "unknown_count": 0,
+    "compliance_pct": 100.0,
+    "sections": {
+      "1": {
+        "name": "Initial Setup & Software",
+        "total": 7,
+        "pass": 7,
+        "fail": 0,
+        "other": 0,
+        "compliance_pct": 100.0
+      },
+      "2": {
+        "name": "Services & Schedulers",
+        "total": 0,
+        "pass": 0,
+        "fail": 0,
+        "other": 0,
+        "compliance_pct": 0.0
+      },
+      "3": {
+        "name": "Network Configuration",
+        "total": 0,
+        "pass": 0,
+        "fail": 0,
+        "other": 0,
+        "compliance_pct": 0.0
+      },
+      "4": {
+        "name": "Host Firewall (UFW)",
+        "total": 0,
+        "pass": 0,
+        "fail": 0,
+        "other": 0,
+        "compliance_pct": 0.0
+      },
+      "5": {
+        "name": "Access, Auth & Privileges",
+        "total": 0,
+        "pass": 0,
+        "fail": 0,
+        "other": 0,
+        "compliance_pct": 0.0
+      },
+      "6": {
+        "name": "Logging, Auditing & Integrity",
+        "total": 0,
+        "pass": 0,
+        "fail": 0,
+        "other": 0,
+        "compliance_pct": 0.0
+      },
+      "7": {
+        "name": "File Permissions & Local Users",
+        "total": 0,
+        "pass": 0,
+        "fail": 0,
+        "other": 0,
+        "compliance_pct": 0.0
+      }
+    }
+  },
+  "error": null,
+  "duration_seconds": 21.75
+}

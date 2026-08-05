@@ -1,0 +1,483 @@
+{
+  "run_id": "192.168.1.14_20260729_105648_7423",
+  "status": "completed",
+  "created_at": "2026-07-29T10:56:48.884479",
+  "hostname": "192.168.1.14",
+  "username": "sebti",
+  "target_os": "linux",
+  "rules_filter": "5.1",
+  "progress_message": "Audit completed successfully.",
+  "profile": {
+    "ssh": {
+      "version": "OpenSSH 9.6p1",
+      "banner": "OpenSSH_9.6p1",
+      "port": 22,
+      "network": {
+        "address_family": {
+          "value": "any",
+          "risk": "low"
+        },
+        "listen_address": "0.0.0.0:22"
+      },
+      "authentication": {
+        "usepam": true,
+        "max_auth_tries": 6,
+        "permit_root_login": "without-password",
+        "ignorerhosts": true,
+        "hostbasedauthentication": false,
+        "pubkey_authentication": true,
+        "gssapiauthentication": false,
+        "password_authentication": {
+          "value": true,
+          "risk": "high"
+        },
+        "permit_empty_passwords": false,
+        "authentication_methods": {
+          "value": "any",
+          "risk": "high"
+        }
+      },
+      "session": {
+        "login_grace_time": 120,
+        "max_sessions": 10,
+        "client_alive_interval": {
+          "value": 0,
+          "risk": "medium"
+        },
+        "client_alive_count_max": 3,
+        "maxstartups": "10:30:100"
+      },
+      "forwarding": {
+        "gateway_ports": false,
+        "allow_tcp_forwarding": {
+          "value": true,
+          "risk": "medium"
+        },
+        "allow_agent_forwarding": {
+          "value": true,
+          "risk": "medium"
+        },
+        "allow_streamlocal_forwarding": {
+          "value": true,
+          "risk": "medium"
+        },
+        "permit_open": {
+          "value": "any",
+          "risk": "medium"
+        },
+        "permit_listen": {
+          "value": "any",
+          "risk": "medium"
+        }
+      },
+      "features": {
+        "x11_forwarding": {
+          "value": true,
+          "risk": "medium"
+        },
+        "strict_modes": true,
+        "compression": true,
+        "use_dns": {
+          "value": false,
+          "risk": "low"
+        },
+        "banner": "none",
+        "permit_user_environment": false,
+        "log_level": "INFO",
+        "syslog_facility": "AUTH"
+      },
+      "compression": "enabled (zlib@openssh.com)",
+      "all_ciphers": [
+        "chacha20-poly1305@openssh.com",
+        "aes128-ctr",
+        "aes192-ctr",
+        "aes256-ctr",
+        "aes128-gcm@openssh.com",
+        "aes256-gcm@openssh.com"
+      ],
+      "sshd_config_permissions": "644 root root /etc/ssh/sshd_config",
+      "ssh_privkey_permissions": "600 root root /etc/ssh/ssh_host_ecdsa_key\n600 root root /etc/ssh/ssh_host_ed25519_key\n600 root root /etc/ssh/ssh_host_rsa_key",
+      "ssh_pubkey_permissions": "644 root root /etc/ssh/ssh_host_ecdsa_key.pub\n644 root root /etc/ssh/ssh_host_ed25519_key.pub\n644 root root /etc/ssh/ssh_host_rsa_key.pub"
+    },
+    "crypto": {
+      "weak_macs": [
+        {
+          "algorithm": "umac-64-etm@openssh.com",
+          "severity": "medium",
+          "reason": "UMAC-64 in EtM; 64-bit birthday bound too small for long sessions."
+        },
+        {
+          "algorithm": "hmac-sha1-etm@openssh.com",
+          "severity": "high",
+          "reason": "SHA-1 in EtM mode; enables Terrapin attack (CVE-2023-48795)."
+        },
+        {
+          "algorithm": "umac-64@openssh.com",
+          "severity": "medium",
+          "reason": "UMAC with 64-bit tag; birthday attack risk at ~2^32 messages."
+        },
+        {
+          "algorithm": "umac-128@openssh.com",
+          "severity": "medium",
+          "reason": "Algorithm is deprecated or has known cryptographic weaknesses."
+        },
+        {
+          "algorithm": "hmac-sha2-256",
+          "severity": "medium",
+          "reason": "Algorithm is deprecated or has known cryptographic weaknesses."
+        },
+        {
+          "algorithm": "hmac-sha2-512",
+          "severity": "medium",
+          "reason": "Algorithm is deprecated or has known cryptographic weaknesses."
+        },
+        {
+          "algorithm": "hmac-sha1",
+          "severity": "high",
+          "reason": "SHA-1 hash; collision attacks demonstrated; deprecated in RFC 6194."
+        }
+      ],
+      "weak_kex": [
+        {
+          "algorithm": "ecdh-sha2-nistp256",
+          "severity": "high",
+          "reason": "NIST P-256 curve has suspected NIST/NSA backdoor per Dual_EC_DRBG concerns."
+        },
+        {
+          "algorithm": "ecdh-sha2-nistp384",
+          "severity": "high",
+          "reason": "NIST P-384 curve; same NSA-standardized curve trust concerns as nistp256."
+        },
+        {
+          "algorithm": "ecdh-sha2-nistp521",
+          "severity": "high",
+          "reason": "NIST P-521 curve; same NSA-standardized curve trust concerns as nistp256."
+        },
+        {
+          "algorithm": "diffie-hellman-group14-sha256",
+          "severity": "medium",
+          "reason": "Algorithm is deprecated or has known cryptographic weaknesses."
+        }
+      ],
+      "weak_host_keys": [
+        {
+          "algorithm": "ecdsa-sha2-nistp256",
+          "severity": "high",
+          "reason": "Algorithm is deprecated or has known cryptographic weaknesses."
+        }
+      ]
+    },
+    "vulnerabilities": [
+      {
+        "cve": "CVE-2023-48795",
+        "name": "Terrapin Attack",
+        "risk": "high",
+        "description": "Prefix truncation attack on SSH handshake via ChaCha20-Poly1305 or CBC-EtM, allowing downgrade of security extensions.",
+        "affected_algorithms": [
+          "hmac-sha1-etm@openssh.com"
+        ],
+        "notes": "Mitigated by removing CBC-EtM MACs and ensuring strict KEX."
+      },
+      {
+        "cve": "CVE-2002-20001",
+        "name": "DROWN (Diffie-Hellman Key Reuse)",
+        "risk": "high",
+        "description": "Use of weak Diffie-Hellman groups allows a man-in-the-middle to decrypt or forge session traffic.",
+        "affected_algorithms": [
+          "ecdh-sha2-nistp256",
+          "ecdh-sha2-nistp384",
+          "ecdh-sha2-nistp521"
+        ],
+        "notes": "Remove DH group sizes below 3072 bits."
+      }
+    ]
+  },
+  "cis_report_markdown": "## SSH Rules\n### Rule 5.1.1: Ensure access to /etc/ssh/sshd_config is configured (Automated)\n*   **Status**: PASS\n*   **Evidence**: Permissions for `/etc/ssh/sshd_config` are `644 root root`.\n*   **Recommendation**: None\n\n### Rule 5.1.2: Ensure access to SSH private host key files is configured (Automated)\n*   **Status**: PASS\n*   **Evidence**: Permissions for SSH private host key files are `600 root root` for `/etc/ssh/ssh_host_ecdsa_key`, `/etc/ssh/ssh_host_ed25519_key`, and `/etc/ssh/ssh_host_rsa_key`.\n*   **Recommendation**: None\n\n### Rule 5.1.3: Ensure access to SSH public host key files is configured (Automated)\n*   **Status**: PASS\n*   **Evidence**: Permissions for SSH public host key files are `644 root root` for `/etc/ssh/ssh_host_ecdsa_key.pub`, `/etc/ssh/ssh_host_ed25519_key.pub`, and `/etc/ssh/ssh_host_rsa_key.pub`.\n*   **Recommendation**: None\n\n### Rule 5.1.4: Ensure sshd access is configured (Automated)\n*   **Status**: FAIL\n*   **Evidence**: `ListenAddress` is configured to `0.0.0.0:22`, which allows SSH to listen on all available network interfaces.\n*   **Recommendation**: Configure `ListenAddress` in `/etc/ssh/sshd_config` to a specific IP address to restrict SSH access to a designated interface. For example, `ListenAddress 192.168.1.100:22`.\n\n### Rule 5.1.5: Ensure sshd Banner is configured (Automated)\n*   **Status**: FAIL\n*   **Evidence**: `Banner` is set to `none`.\n*   **Recommendation**: Configure `Banner` in `/etc/ssh/sshd_config` to point to a warning banner file (e.g., `Banner /etc/issue.net`) to display a warning message before authentication.\n\n### Rule 5.1.6: Ensure sshd Ciphers are configured (Automated)\n*   **Status**: PASS\n*   **Evidence**: Configured ciphers are `chacha20-poly1305@openssh.com`, `aes128-ctr`, `aes192-ctr`, `aes256-ctr`, `aes128-gcm@openssh.com`, `aes256-gcm@openssh.com`. These are considered strong ciphers.\n*   **Recommendation**: None\n\n### Rule 5.1.7: Ensure sshd ClientAliveInterval and ClientAliveCountMax are configured (Automated)\n*   **Status**: FAIL\n*   **Evidence**: `ClientAliveInterval` is set to `0`, which disables the feature.\n*   **Recommendation**: Configure `ClientAliveInterval` to a non-zero value (e.g., `300` seconds) and `ClientAliveCountMax` (e.g., `3`) in `/etc/ssh/sshd_config` to terminate idle SSH sessions.\n\n### Rule 5.1.8: Ensure sshd DisableForwarding is enabled (Automated)\n*   **Status**: FAIL\n*   **Evidence**: `AllowTcpForwarding` is `true`, `AllowAgentForwarding` is `true`, `AllowStreamLocalForwarding` is `true`, `PermitOpen` is `any`, and `PermitListen` is `any`.\n*   **Recommendation**: Disable all forms of forwarding by setting `AllowTcpForwarding no`, `AllowAgentForwarding no`, `AllowStreamLocalForwarding no`, `PermitOpen none`, and `PermitListen none` in `/etc/ssh/sshd_config`.\n\n### Rule 5.1.9: Ensure sshd GSSAPIAuthentication is disabled (Automated)\n*   **Status**: PASS\n*   **Evidence**: `GSSAPIAuthentication` is set to `false`.\n*   **Recommendation**: None\n\n### Rule 5.1.10: Ensure sshd HostbasedAuthentication is disabled (Automated)\n*   **Status**: PASS\n*   **Evidence**: `HostbasedAuthentication` is set to `false`.\n*   **Recommendation**: None\n\n### Rule 5.1.11: Ensure sshd IgnoreRhosts is enabled (Automated)\n*   **Status**: PASS\n*   **Evidence**: `IgnoreRhosts` is set to `true`.\n*   **Recommendation**: None\n\n### Rule 5.1.12: Ensure sshd KexAlgorithms is configured (Automated)\n*   **Status**: FAIL\n*   **Evidence**: The system is configured with weak Key Exchange Algorithms including `ecdh-sha2-nistp256`, `ecdh-sha2-nistp384`, `ecdh-sha2-nistp521` (suspected NIST/NSA backdoor concerns), and `diffie-hellman-group14-sha256` (deprecated or known weaknesses).\n*   **Recommendation**: Remove weak and deprecated KexAlgorithms from the `KexAlgorithms` directive in `/etc/ssh/sshd_config`. Prioritize modern, strong, and post-quantum safe algorithms.\n\n### Rule 5.1.13: Ensure sshd LoginGraceTime is configured (Automated)\n*   **Status**: FAIL\n*   **Evidence**: `LoginGraceTime` is set to `120` seconds.\n*   **Recommendation**: Configure `LoginGraceTime` in `/etc/ssh/sshd_config` to a value between 30 and 60 seconds (e.g., `60`) to reduce the window for brute-force attacks.\n\n### Rule 5.1.14: Ensure sshd LogLevel is configured (Automated)\n*   **Status**: PASS\n*   **Evidence**: `LogLevel` is set to `INFO`.\n*   **Recommendation**: None\n\n### Rule 5.1.15: Ensure sshd MACs are configured (Automated)\n*   **Status**: FAIL\n*   **Evidence**: The system is configured with weak MAC algorithms including `umac-64-etm@openssh.com`, `hmac-sha1-etm@openssh.com` (enables Terrapin attack), `umac-64@openssh.com`, `umac-128@openssh.com`, `hmac-sha2-256`, `hmac-sha2-512`, and `hmac-sha1` (SHA-1 hash, collision attacks demonstrated).\n*   **Recommendation**: Remove weak and deprecated MAC algorithms from the `MACs` directive in `/etc/ssh/sshd_config`. Prioritize modern, strong MACs like `hmac-sha2-512-etm@openssh.com` or `hmac-sha2-256-etm@openssh.com`.\n\n### Rule 5.1.16: Ensure sshd MaxAuthTries is configured (Automated)\n*   **Status**: PASS\n*   **Evidence**: `MaxAuthTries` is set to `6`.\n*   **Recommendation**: None\n\n### Rule 5.1.17: Ensure sshd MaxStartups is configured (Automated)\n*   **Status**: PASS\n*   **Evidence**: `MaxStartups` is configured to `10:30:100`.\n*   **Recommendation**: None\n\n### Rule 5.1.18: Ensure sshd MaxSessions is configured (Automated)\n*   **Status**: PASS\n*   **Evidence**: `MaxSessions` is set to `10`.\n*   **Recommendation**: None\n\n### Rule 5.1.19: Ensure sshd PermitEmptyPasswords is disabled (Automated)\n*   **Status**: PASS\n*   **Evidence**: `PermitEmptyPasswords` is set to `false`.\n*   **Recommendation**: None\n\n### Rule 5.1.20: Ensure sshd PermitRootLogin is disabled (Automated)\n*   **Status**: FAIL\n*   **Evidence**: `PermitRootLogin` is set to `without-password`.\n*   **Recommendation**: Configure `PermitRootLogin no` in `/etc/ssh/sshd_config` to prevent direct root login via SSH. Users should log in with their own accounts and use `sudo` for privilege escalation.\n\n### Rule 5.1.21: Ensure sshd PermitUserEnvironment is disabled (Automated)\n*   **Status**: PASS\n*   **Evidence**: `PermitUserEnvironment` is set to `false`.\n*   **Recommendation**: None\n\n### Rule 5.1.22: Ensure sshd UsePAM is enabled (Automated)\n*   **Status**: PASS\n*   **Evidence**: `UsePAM` is set to `true`.\n*   **Recommendation**: None\n\n### Rule 5.1.23: Ensure sshd post-quantum cryptography key exchange algorithms are configured (Automated)\n*   **Status**: FAIL\n*   **Evidence**: The system is configured with weak Key Exchange Algorithms including `ecdh-sha2-nistp256`, `ecdh-sha2-nistp384`, `ecdh-sha2-nistp521`, and `diffie-hellman-group14-sha256`, which are not post-quantum cryptography (PQC) algorithms and some have known weaknesses.\n*   **Recommendation**: Configure `KexAlgorithms` in `/etc/ssh/sshd_config` to include and prioritize post-quantum cryptography key exchange algorithms, and remove all weak or non-PQC algorithms.\n\n### Rule 5.1.24: Ensure sshd ListenAddress is configured (Automated)\n*   **Status**: FAIL\n*   **Evidence**: `ListenAddress` is configured to `0.0.0.0:22`, which allows SSH to listen on all available network interfaces.\n*   **Recommendation**: Configure `ListenAddress` in `/etc/ssh/sshd_config` to a specific IP address to restrict SSH access to a designated interface. For example, `ListenAddress 192.168.1.100:22`.",
+  "suid_report_markdown": "",
+  "structured_rules": [
+    {
+      "rule_id": "5.1.1",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure access to /etc/ssh/sshd_config is configured",
+      "status": "PASS",
+      "evidence": "Permissions for `/etc/ssh/sshd_config` are `644 root root`.",
+      "recommendation": "None"
+    },
+    {
+      "rule_id": "5.1.2",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure access to SSH private host key files is configured",
+      "status": "PASS",
+      "evidence": "Permissions for SSH private host key files are `600 root root` for `/etc/ssh/ssh_host_ecdsa_key`, `/etc/ssh/ssh_host_ed25519_key`, and `/etc/ssh/ssh_host_rsa_key`.",
+      "recommendation": "None"
+    },
+    {
+      "rule_id": "5.1.3",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure access to SSH public host key files is configured",
+      "status": "PASS",
+      "evidence": "Permissions for SSH public host key files are `644 root root` for `/etc/ssh/ssh_host_ecdsa_key.pub`, `/etc/ssh/ssh_host_ed25519_key.pub`, and `/etc/ssh/ssh_host_rsa_key.pub`.",
+      "recommendation": "None"
+    },
+    {
+      "rule_id": "5.1.4",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure sshd access is configured",
+      "status": "FAIL",
+      "evidence": "`ListenAddress` is configured to `0.0.0.0:22`, which allows SSH to listen on all available network interfaces.",
+      "recommendation": "Configure `ListenAddress` in `/etc/ssh/sshd_config` to a specific IP address to restrict SSH access to a designated interface. For example, `ListenAddress 192.168.1.100:22`."
+    },
+    {
+      "rule_id": "5.1.5",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure sshd Banner is configured",
+      "status": "FAIL",
+      "evidence": "`Banner` is set to `none`.",
+      "recommendation": "Configure `Banner` in `/etc/ssh/sshd_config` to point to a warning banner file (e.g., `Banner /etc/issue.net`) to display a warning message before authentication."
+    },
+    {
+      "rule_id": "5.1.6",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure sshd Ciphers are configured",
+      "status": "PASS",
+      "evidence": "Configured ciphers are `chacha20-poly1305@openssh.com`, `aes128-ctr`, `aes192-ctr`, `aes256-ctr`, `aes128-gcm@openssh.com`, `aes256-gcm@openssh.com`. These are considered strong ciphers.",
+      "recommendation": "None"
+    },
+    {
+      "rule_id": "5.1.7",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure sshd ClientAliveInterval and ClientAliveCountMax are configured",
+      "status": "FAIL",
+      "evidence": "`ClientAliveInterval` is set to `0`, which disables the feature.",
+      "recommendation": "Configure `ClientAliveInterval` to a non-zero value (e.g., `300` seconds) and `ClientAliveCountMax` (e.g., `3`) in `/etc/ssh/sshd_config` to terminate idle SSH sessions."
+    },
+    {
+      "rule_id": "5.1.8",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure sshd DisableForwarding is enabled",
+      "status": "FAIL",
+      "evidence": "`AllowTcpForwarding` is `true`, `AllowAgentForwarding` is `true`, `AllowStreamLocalForwarding` is `true`, `PermitOpen` is `any`, and `PermitListen` is `any`.",
+      "recommendation": "Disable all forms of forwarding by setting `AllowTcpForwarding no`, `AllowAgentForwarding no`, `AllowStreamLocalForwarding no`, `PermitOpen none`, and `PermitListen none` in `/etc/ssh/sshd_config`."
+    },
+    {
+      "rule_id": "5.1.9",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure sshd GSSAPIAuthentication is disabled",
+      "status": "PASS",
+      "evidence": "`GSSAPIAuthentication` is set to `false`.",
+      "recommendation": "None"
+    },
+    {
+      "rule_id": "5.1.10",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure sshd HostbasedAuthentication is disabled",
+      "status": "PASS",
+      "evidence": "`HostbasedAuthentication` is set to `false`.",
+      "recommendation": "None"
+    },
+    {
+      "rule_id": "5.1.11",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure sshd IgnoreRhosts is enabled",
+      "status": "PASS",
+      "evidence": "`IgnoreRhosts` is set to `true`.",
+      "recommendation": "None"
+    },
+    {
+      "rule_id": "5.1.12",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure sshd KexAlgorithms is configured",
+      "status": "FAIL",
+      "evidence": "The system is configured with weak Key Exchange Algorithms including `ecdh-sha2-nistp256`, `ecdh-sha2-nistp384`, `ecdh-sha2-nistp521` (suspected NIST/NSA backdoor concerns), and `diffie-hellman-group14-sha256` (deprecated or known weaknesses).",
+      "recommendation": "Remove weak and deprecated KexAlgorithms from the `KexAlgorithms` directive in `/etc/ssh/sshd_config`. Prioritize modern, strong, and post-quantum safe algorithms."
+    },
+    {
+      "rule_id": "5.1.13",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure sshd LoginGraceTime is configured",
+      "status": "FAIL",
+      "evidence": "`LoginGraceTime` is set to `120` seconds.",
+      "recommendation": "Configure `LoginGraceTime` in `/etc/ssh/sshd_config` to a value between 30 and 60 seconds (e.g., `60`) to reduce the window for brute-force attacks."
+    },
+    {
+      "rule_id": "5.1.14",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure sshd LogLevel is configured",
+      "status": "PASS",
+      "evidence": "`LogLevel` is set to `INFO`.",
+      "recommendation": "None"
+    },
+    {
+      "rule_id": "5.1.15",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure sshd MACs are configured",
+      "status": "FAIL",
+      "evidence": "The system is configured with weak MAC algorithms including `umac-64-etm@openssh.com`, `hmac-sha1-etm@openssh.com` (enables Terrapin attack), `umac-64@openssh.com`, `umac-128@openssh.com`, `hmac-sha2-256`, `hmac-sha2-512`, and `hmac-sha1` (SHA-1 hash, collision attacks demonstrated).",
+      "recommendation": "Remove weak and deprecated MAC algorithms from the `MACs` directive in `/etc/ssh/sshd_config`. Prioritize modern, strong MACs like `hmac-sha2-512-etm@openssh.com` or `hmac-sha2-256-etm@openssh.com`."
+    },
+    {
+      "rule_id": "5.1.16",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure sshd MaxAuthTries is configured",
+      "status": "PASS",
+      "evidence": "`MaxAuthTries` is set to `6`.",
+      "recommendation": "None"
+    },
+    {
+      "rule_id": "5.1.17",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure sshd MaxStartups is configured",
+      "status": "PASS",
+      "evidence": "`MaxStartups` is configured to `10:30:100`.",
+      "recommendation": "None"
+    },
+    {
+      "rule_id": "5.1.18",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure sshd MaxSessions is configured",
+      "status": "PASS",
+      "evidence": "`MaxSessions` is set to `10`.",
+      "recommendation": "None"
+    },
+    {
+      "rule_id": "5.1.19",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure sshd PermitEmptyPasswords is disabled",
+      "status": "PASS",
+      "evidence": "`PermitEmptyPasswords` is set to `false`.",
+      "recommendation": "None"
+    },
+    {
+      "rule_id": "5.1.20",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure sshd PermitRootLogin is disabled",
+      "status": "FAIL",
+      "evidence": "`PermitRootLogin` is set to `without-password`.",
+      "recommendation": "Configure `PermitRootLogin no` in `/etc/ssh/sshd_config` to prevent direct root login via SSH. Users should log in with their own accounts and use `sudo` for privilege escalation."
+    },
+    {
+      "rule_id": "5.1.21",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure sshd PermitUserEnvironment is disabled",
+      "status": "PASS",
+      "evidence": "`PermitUserEnvironment` is set to `false`.",
+      "recommendation": "None"
+    },
+    {
+      "rule_id": "5.1.22",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure sshd UsePAM is enabled",
+      "status": "PASS",
+      "evidence": "`UsePAM` is set to `true`.",
+      "recommendation": "None"
+    },
+    {
+      "rule_id": "5.1.23",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure sshd post-quantum cryptography key exchange algorithms are configured",
+      "status": "FAIL",
+      "evidence": "The system is configured with weak Key Exchange Algorithms including `ecdh-sha2-nistp256`, `ecdh-sha2-nistp384`, `ecdh-sha2-nistp521`, and `diffie-hellman-group14-sha256`, which are not post-quantum cryptography (PQC) algorithms and some have known weaknesses.",
+      "recommendation": "Configure `KexAlgorithms` in `/etc/ssh/sshd_config` to include and prioritize post-quantum cryptography key exchange algorithms, and remove all weak or non-PQC algorithms."
+    },
+    {
+      "rule_id": "5.1.24",
+      "section": "5.1",
+      "section_num": "5",
+      "title": "Ensure sshd ListenAddress is configured",
+      "status": "FAIL",
+      "evidence": "`ListenAddress` is configured to `0.0.0.0:22`, which allows SSH to listen on all available network interfaces.",
+      "recommendation": "Configure `ListenAddress` in `/etc/ssh/sshd_config` to a specific IP address to restrict SSH access to a designated interface. For example, `ListenAddress 192.168.1.100:22`."
+    }
+  ],
+  "summary": {
+    "total_checked": 24,
+    "pass_count": 14,
+    "fail_count": 10,
+    "info_count": 0,
+    "unknown_count": 0,
+    "compliance_pct": 58.3,
+    "sections": {
+      "1": {
+        "name": "Initial Setup & Software",
+        "total": 0,
+        "pass": 0,
+        "fail": 0,
+        "other": 0,
+        "compliance_pct": 0.0
+      },
+      "2": {
+        "name": "Services & Schedulers",
+        "total": 0,
+        "pass": 0,
+        "fail": 0,
+        "other": 0,
+        "compliance_pct": 0.0
+      },
+      "3": {
+        "name": "Network Configuration",
+        "total": 0,
+        "pass": 0,
+        "fail": 0,
+        "other": 0,
+        "compliance_pct": 0.0
+      },
+      "4": {
+        "name": "Host Firewall (UFW)",
+        "total": 0,
+        "pass": 0,
+        "fail": 0,
+        "other": 0,
+        "compliance_pct": 0.0
+      },
+      "5": {
+        "name": "Access, Auth & Privileges",
+        "total": 24,
+        "pass": 14,
+        "fail": 10,
+        "other": 0,
+        "compliance_pct": 58.3
+      },
+      "6": {
+        "name": "Logging, Auditing & Integrity",
+        "total": 0,
+        "pass": 0,
+        "fail": 0,
+        "other": 0,
+        "compliance_pct": 0.0
+      },
+      "7": {
+        "name": "File Permissions & Local Users",
+        "total": 0,
+        "pass": 0,
+        "fail": 0,
+        "other": 0,
+        "compliance_pct": 0.0
+      }
+    }
+  },
+  "error": null,
+  "duration_seconds": 30.25
+}

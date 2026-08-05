@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SENTINEL — CIS Benchmark Security Auditor</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body class="bg-slate">
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <div class="brand-icon">🛡️</div>
+        <div>
+          <h1 class="brand-title">SENTINEL</h1>
+          <p class="brand-subtitle">CIS Benchmark Security Compliance & Audit Platform</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <select id="runHistorySelect" class="input-select" title="Select Audit Run">
+          <option value="">Loading Audit History...</option>
+        </select>
+        <button id="btnDownloadPdf" class="btn btn-secondary" title="Download PDF Report" disabled>⬇ PDF</button>
+        <button id="btnCompareRuns" class="btn btn-secondary">⚡ Compare Runs</button>
+        <button id="btnNewAudit" class="btn btn-primary">+ New Audit Run</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-container">
+
+    <!-- Active Run Status Bar (when polling/running) -->
+    <div id="activeRunBanner" class="active-run-banner hidden">
+      <div class="spinner"></div>
+      <div>
+        <strong>Audit in Progress:</strong> <span id="activeRunMsg">Connecting to target...</span>
+      </div>
+    </div>
+
+    <!-- Overview Metrics Cards -->
+    <section class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-header">Compliance Posture</div>
+        <div class="metric-value" id="valCompliancePct">0.0%</div>
+        <div class="metric-bar-bg">
+          <div class="metric-bar-fill" id="barCompliance" style="width: 0%;"></div>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-header">Total Rules Evaluated</div>
+        <div class="metric-value text-slate" id="valTotalRules">0</div>
+        <div class="metric-sub" id="valRunTarget">Host: N/A</div>
+      </div>
+
+      <div class="metric-card badge-pass-card">
+        <div class="metric-header">Passed Rules</div>
+        <div class="metric-value text-pass" id="valPassCount">0</div>
+        <div class="metric-sub">Compliant controls</div>
+      </div>
+
+      <div class="metric-card badge-fail-card">
+        <div class="metric-header">Failed Rules</div>
+        <div class="metric-value text-fail" id="valFailCount">0</div>
+        <div class="metric-sub">Requires remediation</div>
+      </div>
+
+      <div class="metric-card badge-info-card">
+        <div class="metric-header">Unknown / Info</div>
+        <div class="metric-value text-info" id="valInfoCount">0</div>
+        <div class="metric-sub">Manual review required</div>
+      </div>
+    </section>
+
+    <!-- CIS Section Breakdown Grid -->
+    <section class="section-breakdown">
+      <h2 class="section-title">CIS Benchmark Section Posture</h2>
+      <div class="sections-grid" id="sectionsGrid">
+        <!-- Rendered dynamically -->
+      </div>
+    </section>
+
+    <!-- Detailed Findings Filterable Table -->
+    <section class="findings-section">
+      <div class="findings-header">
+        <div>
+          <h2 class="section-title">Detailed Security Findings</h2>
+          <p class="section-desc">Auditable rule verdicts, configuration evidence, and remediation steps</p>
+        </div>
+        <div class="filter-controls">
+          <input type="text" id="inputSearch" class="input-text" placeholder="Search Rule ID or Keyword (e.g. 5.1.20, sshd, root)...">
+          
+          <select id="selectSectionFilter" class="input-select">
+            <option value="ALL">All Sections (1 - 7)</option>
+            <option value="1">Section 1 — Initial Setup & Software</option>
+            <option value="2">Section 2 — Services & Schedulers</option>
+            <option value="3">Section 3 — Network Configuration</option>
+            <option value="4">Section 4 — Host Firewall</option>
+            <option value="5">Section 5 — Access & Authentication</option>
+            <option value="6">Section 6 — System Auditing & Logging</option>
+            <option value="7">Section 7 — File Permissions & Local Users</option>
+          </select>
+
+          <div class="status-pills">
+            <button class="pill-btn active" data-status="ALL">All</button>
+            <button class="pill-btn pill-fail" data-status="FAIL">FAIL</button>
+            <button class="pill-btn pill-pass" data-status="PASS">PASS</button>
+            <button class="pill-btn pill-info" data-status="UNKNOWN">INFO/UNK</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Findings Table -->
+      <div class="table-wrapper">
+        <table class="findings-table">
+          <thead>
+            <tr>
+              <th style="width: 110px;">Rule ID</th>
+              <th style="width: 100px;">Verdict</th>
+              <th>Rule Description & Title</th>
+              <th>Section</th>
+              <th style="width: 90px;">Action</th>
+            </tr>
+          </thead>
+          <tbody id="rulesTableBody">
+            <tr>
+              <td colspan="5" class="table-empty">No audit run loaded. Select a run or click "+ New Audit Run".</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Modal: Trigger New Audit -->
+  <div id="modalNewAudit" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Trigger Remote Security Audit</h3>
+        <button id="btnCloseAuditModal" class="btn-icon">&times;</button>
+      </div>
+      <form id="formNewAudit">
+        <div class="form-row">
+          <div class="form-group flex-2">
+            <label for="auditHostname">Target Host / IP *</label>
+            <input type="text" id="auditHostname" class="input-text" required placeholder="e.g. 192.168.1.50 or target.local">
+          </div>
+          <div class="form-group flex-1">
+            <label for="auditPort">Port</label>
+            <input type="number" id="auditPort" class="input-text" placeholder="22 (Linux) / 5985 (Win)">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="auditUsername">Username *</label>
+            <input type="text" id="auditUsername" class="input-text" required placeholder="e.g. root or ubuntu">
+          </div>
+          <div class="form-group flex-1">
+            <label for="auditPassword">Password</label>
+            <input type="password" id="auditPassword" class="input-text" placeholder="Password (if SSH key not used)">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-2">
+            <label for="auditKeyFile">SSH Key Path (Linux only)</label>
+            <input type="text" id="auditKeyFile" class="input-text" placeholder="e.g. /home/user/.ssh/id_rsa">
+          </div>
+          <div class="form-group flex-1">
+            <label for="auditTargetOs">Target OS</label>
+            <select id="auditTargetOs" class="input-select">
+              <option value="linux" selected>Linux (Ubuntu/RHEL)</option>
+              <option value="windows">Windows Server</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="auditRules">Rule Scope Filter (--rules)</label>
+          <input type="text" id="auditRules" class="input-text" placeholder="e.g. 5.1.20, 5.4.1.1 or section shorthand '5.1' (Leave blank for Full Audit)">
+          <small class="form-help">Leave empty to run full CIS audit suite. Specify section shorthand like <code>5.1</code> or rule list like <code>5.1.20,6.2.1</code> for targeted audit.</small>
+        </div>
+
+        <!-- Presets -->
+        <div class="presets-group">
+          <label>Quick Scope Presets:</label>
+          <div class="preset-buttons">
+            <button type="button" class="preset-btn" data-scope="">Full Audit</button>
+            <button type="button" class="preset-btn" data-scope="5.1">SSH (5.1)</button>
+            <button type="button" class="preset-btn" data-scope="6.2">Auditd (6.2)</button>
+            <button type="button" class="preset-btn" data-scope="4.1">Firewall (4.1)</button>
+            <button type="button" class="preset-btn" data-scope="5.4,7.1,7.2">Accounts & Perms (5.4, 7.1, 7.2)</button>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" id="btnCancelAuditModal" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-primary">🚀 Execute Audit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Run Comparison -->
+  <div id="modalCompare" class="modal-overlay hidden">
+    <div class="modal-content modal-lg">
+      <div class="modal-header">
+        <h3>Audit Run Comparison (Diff Analysis)</h3>
+        <button id="btnCloseCompareModal" class="btn-icon">&times;</button>
+      </div>
+      <div class="compare-controls">
+        <div class="form-group flex-1">
+          <label>Baseline Run (Run #1):</label>
+          <select id="compareRun1" class="input-select"></select>
+        </div>
+        <div class="form-group flex-1">
+          <label>Target Run (Run #2):</label>
+          <select id="compareRun2" class="input-select"></select>
+        </div>
+        <button id="btnExecuteCompare" class="btn btn-primary">Compare</button>
+      </div>
+
+      <div id="compareSummaryBanner" class="compare-summary hidden">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <div class="table-wrapper" style="max-height: 400px; overflow-y: auto;">
+        <table class="findings-table">
+          <thead>
+            <tr>
+              <th style="width: 100px;">Rule ID</th>
+              <th>Rule Title</th>
+              <th>Baseline Status</th>
+              <th>Target Status</th>
+              <th style="width: 110px;">Transition</th>
+            </tr>
+          </thead>
+          <tbody id="compareTableBody">
+            <tr>
+              <td colspan="5" class="table-empty">Select two audit runs above and click "Compare".</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
