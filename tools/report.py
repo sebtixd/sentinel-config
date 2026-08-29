@@ -135,16 +135,16 @@ def parse_compliance_stats(cis_report: str) -> dict:
 # ---------------------------------------------------------------------------
 
 _PALETTE = {
-    "PASS":    "#2ECC71",
-    "FAIL":    "#E74C3C",
-    "UNKNOWN": "#95A5A6",
+    "PASS":    "#059669",
+    "FAIL":    "#E11D48",
+    "UNKNOWN": "#D97706",
 }
 
 
 def _fig_to_b64(fig) -> str:
     """Render a matplotlib figure to a base64 PNG string."""
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight", facecolor="#FAFAFA")
+    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight", facecolor="#FFFFFF")
     buf.seek(0)
     return base64.b64encode(buf.read()).decode()
 
@@ -176,17 +176,19 @@ def generate_pie_chart_b64(stats: dict) -> str | None:
         return None
 
     fig, ax = plt.subplots(figsize=(5, 4))
+    fig.patch.set_facecolor("#FFFFFF")
+    ax.set_facecolor("#FFFFFF")
     wedges, texts, autotexts = ax.pie(
         sizes, labels=labels, colors=colors,
         autopct="%1.1f%%", startangle=90,
-        textprops={"fontsize": 11},
-        wedgeprops={"linewidth": 1.5, "edgecolor": "white"},
+        textprops={"fontsize": 11, "color": "#0F172A"},
+        wedgeprops={"linewidth": 1.5, "edgecolor": "#FFFFFF"},
     )
     for at in autotexts:
         at.set_fontsize(10)
-        at.set_color("white")
+        at.set_color("#FFFFFF")
         at.set_fontweight("bold")
-    ax.set_title("Overall CIS Compliance", fontsize=14, fontweight="bold", pad=15)
+    ax.set_title("Overall CIS Compliance", fontsize=14, fontweight="bold", pad=15, color="#0F172A")
     result = _fig_to_b64(fig)
     plt.close(fig)
     return result
@@ -215,19 +217,23 @@ def generate_bar_chart_b64(stats: dict) -> str | None:
     width = 0.25
 
     fig, ax = plt.subplots(figsize=(max(8, len(names) * 1.5), 5))
+    fig.patch.set_facecolor("#FFFFFF")
+    ax.set_facecolor("#FFFFFF")
     ax.bar(x - width, pass_vals, width, label="PASS",    color=_PALETTE["PASS"],    edgecolor="white")
     ax.bar(x,         fail_vals, width, label="FAIL",    color=_PALETTE["FAIL"],    edgecolor="white")
     ax.bar(x + width, unk_vals,  width, label="UNKNOWN", color=_PALETTE["UNKNOWN"], edgecolor="white")
 
     ax.set_xticks(x)
-    ax.set_xticklabels(names, rotation=20, ha="right", fontsize=10)
-    ax.set_ylabel("Rule Count", fontsize=11)
-    ax.set_title("CIS Compliance by Section", fontsize=14, fontweight="bold", pad=15)
-    ax.legend(fontsize=10)
-    ax.set_facecolor("#F8F9FA")
+    ax.set_xticklabels(names, rotation=20, ha="right", fontsize=10, color="#0F172A")
+    ax.tick_params(axis='y', colors='#0F172A')
+    ax.set_ylabel("Rule Count", fontsize=11, color="#334155")
+    ax.set_title("CIS Compliance by Section", fontsize=14, fontweight="bold", pad=15, color="#0F172A")
+    ax.legend(fontsize=10, facecolor="#FFFFFF", edgecolor="#E2E8F0")
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.yaxis.grid(True, linestyle="--", alpha=0.5)
+    ax.spines["left"].set_color("#CBD5E1")
+    ax.spines["bottom"].set_color("#CBD5E1")
+    ax.yaxis.grid(True, linestyle="--", alpha=0.6, color="#E2E8F0")
     ax.set_axisbelow(True)
 
     result = _fig_to_b64(fig)
@@ -289,6 +295,89 @@ def build_summary_markdown(stats: dict) -> str:
     return md
 
 
+_PDF_EXECUTIVE_STYLE = """<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #0f172a;
+    background-color: #ffffff;
+    line-height: 1.6;
+    font-size: 13px;
+  }
+  h1 {
+    color: #0f172a;
+    font-size: 22px;
+    font-weight: 800;
+    border-bottom: 2px solid #2563eb;
+    padding-bottom: 8px;
+    margin-top: 0;
+  }
+  h2 {
+    color: #1e293b;
+    font-size: 16px;
+    font-weight: 700;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 6px;
+    margin-top: 20px;
+  }
+  h3 {
+    color: #334155;
+    font-size: 14px;
+    font-weight: 600;
+    margin-top: 14px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 12.5px;
+  }
+  th {
+    background-color: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    padding: 8px 12px;
+    border: 1px solid #e2e8f0;
+    text-align: left;
+  }
+  td {
+    padding: 8px 12px;
+    border: 1px solid #e2e8f0;
+    color: #334155;
+  }
+  tr:nth-child(even) td {
+    background-color: #f8fafc;
+  }
+  code, pre {
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-size: 11.5px;
+  }
+  code {
+    background-color: #eff6ff;
+    color: #1d4ed8;
+    padding: 2px 5px;
+    border-radius: 4px;
+    border: 1px solid #bfdbfe;
+  }
+  pre {
+    background-color: #f8fafc;
+    color: #0f172a;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 10px;
+    overflow-x: auto;
+  }
+  hr {
+    border: none;
+    border-top: 1px solid #e2e8f0;
+    margin: 20px 0;
+  }
+</style>
+"""
+
+
 # ---------------------------------------------------------------------------
 # Main export function
 # ---------------------------------------------------------------------------
@@ -330,7 +419,7 @@ def save_reports_to_pdf(
     try:
         # Raw data PDF
         pdf_data = MarkdownPdf(toc_level=2)
-        md_data = f"# Raw Security Data Profile\n\n```json\n{json.dumps(data_json, indent=2)}\n```"
+        md_data = f"{_PDF_EXECUTIVE_STYLE}# Raw Security Data Profile\n\n```json\n{json.dumps(data_json, indent=2)}\n```"
         pdf_data.add_section(Section(md_data))
         pdf_data.save(data_path)
 
@@ -338,7 +427,7 @@ def save_reports_to_pdf(
         if cis_report or suid_report:
             stats = parse_compliance_stats(cis_report) if cis_report else None
 
-            ai_report_md = ""
+            ai_report_md = _PDF_EXECUTIVE_STYLE
             if stats and stats["total"] > 0:
                 log.info("Generating compliance charts…")
                 ai_report_md += build_summary_markdown(stats)

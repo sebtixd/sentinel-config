@@ -485,6 +485,14 @@ def get_implemented_rules():
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 os.makedirs(WEB_DIR, exist_ok=True)
 
+@app.get("/image.png")
+def serve_image():
+    img_file = os.path.join(WEB_DIR, "image.png")
+    if os.path.isfile(img_file):
+        return FileResponse(img_file)
+    raise HTTPException(status_code=404, detail="Image not found")
+
+
 @app.get("/")
 def serve_index():
     index_file = os.path.join(WEB_DIR, "index.html")

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,17 +8,22 @@
   <link rel="stylesheet" href="/static/style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet">
 </head>
+
 <body class="bg-slate">
 
   <!-- Header -->
   <header class="app-header">
     <div class="header-container">
       <div class="brand">
-        <div class="brand-icon">🛡️</div>
+        <div class="brand-icon">
+          <img src="/static/image.png" alt="logo" class="brand-img">
+        </div>
         <div>
-          <h1 class="brand-title">SENTINEL</h1>
+          <h1 class="brand-title">SENTINEL-CONFIG</h1>
           <p class="brand-subtitle">CIS Benchmark Security Compliance & Audit Platform</p>
         </div>
       </div>
@@ -94,8 +100,9 @@
           <p class="section-desc">Auditable rule verdicts, configuration evidence, and remediation steps</p>
         </div>
         <div class="filter-controls">
-          <input type="text" id="inputSearch" class="input-text" placeholder="Search Rule ID or Keyword (e.g. 5.1.20, sshd, root)...">
-          
+          <input type="text" id="inputSearch" class="input-text"
+            placeholder="Search Rule ID or Keyword (e.g. 5.1.20, sshd, root)...">
+
           <select id="selectSectionFilter" class="input-select">
             <option value="ALL">All Sections (1 - 7)</option>
             <option value="1">Section 1 — Initial Setup & Software</option>
@@ -150,7 +157,8 @@
         <div class="form-row">
           <div class="form-group flex-2">
             <label for="auditHostname">Target Host / IP *</label>
-            <input type="text" id="auditHostname" class="input-text" required placeholder="e.g. 192.168.1.50 or target.local">
+            <input type="text" id="auditHostname" class="input-text" required
+              placeholder="e.g. 192.168.1.50 or target.local">
           </div>
           <div class="form-group flex-1">
             <label for="auditPort">Port</label>
@@ -185,8 +193,10 @@
 
         <div class="form-group">
           <label for="auditRules">Rule Scope Filter (--rules)</label>
-          <input type="text" id="auditRules" class="input-text" placeholder="e.g. 5.1.20, 5.4.1.1 or section shorthand '5.1' (Leave blank for Full Audit)">
-          <small class="form-help">Leave empty to run full CIS audit suite. Specify section shorthand like <code>5.1</code> or rule list like <code>5.1.20,6.2.1</code> for targeted audit.</small>
+          <input type="text" id="auditRules" class="input-text"
+            placeholder="e.g. 5.1.20, 5.4.1.1 or section shorthand '5.1' (Leave blank for Full Audit)">
+          <small class="form-help">Leave empty to run full CIS audit suite. Specify section shorthand like
+            <code>5.1</code> or rule list like <code>5.1.20,6.2.1</code> for targeted audit.</small>
         </div>
 
         <!-- Presets -->
@@ -255,4 +265,5 @@
 
   <script src="/static/app.js"></script>
 </body>
+
 </html>

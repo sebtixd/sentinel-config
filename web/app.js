@@ -144,15 +144,15 @@
 
       if (data.status === "running") {
         activeRunBanner.classList.remove("hidden");
-        activeRunBanner.style.backgroundColor = "rgba(59, 130, 246, 0.15)";
-        activeRunBanner.style.borderColor = "var(--accent-blue)";
+        activeRunBanner.style.backgroundColor = "var(--accent-blue-light)";
+        activeRunBanner.style.borderColor = "var(--accent-blue-border)";
         activeRunMsg.innerHTML = `<strong>Audit in Progress:</strong> ${data.progress_message || "Audit in progress..."}`;
         activePollTimer = setInterval(() => pollRunStatus(runId), 3000);
       } else if (data.status === "failed") {
         activeRunBanner.classList.remove("hidden");
-        activeRunBanner.style.backgroundColor = "rgba(244, 63, 94, 0.15)";
-        activeRunBanner.style.borderColor = "var(--fail-color)";
-        activeRunMsg.innerHTML = `<strong style="color: var(--fail-color)">Audit Failed:</strong> ${escapeHtml(data.error || "Unable to connect or complete audit run.")}`;
+        activeRunBanner.style.backgroundColor = "var(--fail-bg)";
+        activeRunBanner.style.borderColor = "var(--fail-border)";
+        activeRunMsg.innerHTML = `<strong style="color: var(--fail-text)">Audit Failed:</strong> ${escapeHtml(data.error || "Unable to connect or complete audit run.")}`;
       } else {
         activeRunBanner.classList.add("hidden");
       }
@@ -175,9 +175,9 @@
         activePollTimer = null;
         if (data.status === "failed") {
           activeRunBanner.classList.remove("hidden");
-          activeRunBanner.style.backgroundColor = "rgba(244, 63, 94, 0.15)";
-          activeRunBanner.style.borderColor = "var(--fail-color)";
-          activeRunMsg.innerHTML = `<strong style="color: var(--fail-color)">Audit Failed:</strong> ${escapeHtml(data.error || "Unable to connect or complete audit run.")}`;
+          activeRunBanner.style.backgroundColor = "var(--fail-bg)";
+          activeRunBanner.style.borderColor = "var(--fail-border)";
+          activeRunMsg.innerHTML = `<strong style="color: var(--fail-text)">Audit Failed:</strong> ${escapeHtml(data.error || "Unable to connect or complete audit run.")}`;
         } else {
           activeRunBanner.classList.add("hidden");
         }
